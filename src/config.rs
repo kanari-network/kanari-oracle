@@ -80,10 +80,29 @@ impl Default for Config {
         Self {
             crypto: CryptoConfig {
                 symbols: vec![
-                    // Top 50 Cryptocurrencies by Market Cap
-                    "bitcoin".to_string(),
-                    "ethereum".to_string(),
-
+                    "BTC".to_string(),
+                    "ETH".to_string(),
+                    "XRP".to_string(),
+                    "LTC".to_string(),
+                    "BCH".to_string(),
+                    "ADA".to_string(),
+                    "DOT".to_string(),
+                    "LINK".to_string(),
+                    "XLM".to_string(),
+                    "UNI".to_string(),
+                    "DOGE".to_string(),
+                    "SOL".to_string(),
+                    "AVAX".to_string(),
+                    "MATIC".to_string(),
+                    "ATOM".to_string(), 
+                    "FTM".to_string(),
+                    "ALGO".to_string(),
+                    "VET".to_string(),
+                    "ICP".to_string(),
+                    "FIL".to_string(),
+                    "TRX".to_string(),
+                    "EOS".to_string(),
+                    "AAVE".to_string(),
                 ],
                 ..Default::default()
             },

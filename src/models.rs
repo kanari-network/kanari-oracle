@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceData {
-    pub symbol: String,
+    pub symbol: String, // เก็บรูปแบบดั้งเดิม (แต่ key ใน HashMap เป็น lowercase)
     pub price: f64,
     pub change_24h: Option<f64>,
     pub change_24h_percent: Option<f64>,
@@ -30,19 +30,6 @@ impl PriceData {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CryptoPriceResponse {
-    pub id: String,
-    pub symbol: String,
-    pub name: String,
-    pub current_price: f64,
-    pub price_change_24h: Option<f64>,
-    pub price_change_percentage_24h: Option<f64>,
-    pub total_volume: Option<f64>,
-    pub market_cap: Option<f64>,
-    pub last_updated: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StockPriceResponse {
     #[serde(rename = "Global Quote")]
     pub global_quote: StockQuote,
@@ -60,45 +47,35 @@ pub struct StockQuote {
     pub change_percent: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BinancePriceResponse {
-    pub symbol: String,
-    pub price: String,
-}
+impl StockQuote {
+    /// Convert StockQuote to PriceData
+    
+    #[allow(dead_code)]
+    pub fn to_price_data(&self) -> Option<PriceData> {
+        let price = self.price.trim().parse::<f64>().ok()?;
+        let change = self.change.trim().parse::<f64>().ok()?;
+        let change_percent = self.change_percent
+            .trim()
+            .trim_end_matches('%')
+            .parse::<f64>()
+            .ok()?;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BinanceTickerResponse {
-    pub symbol: String,
-    #[serde(rename = "lastPrice")]
-    pub last_price: String,
-    #[serde(rename = "priceChange")]
-    pub price_change: String,
-    #[serde(rename = "priceChangePercent")]
-    pub price_change_percent: String,
-    pub volume: String,
-    #[serde(rename = "quoteVolume")]
-    pub quote_volume: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PriceAlert {
-    pub id: String,
-    pub symbol: String,
-    pub target_price: f64,
-    pub condition: AlertCondition,
-    pub is_active: bool,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AlertCondition {
-    Above,
-    Below,
+        Some(PriceData {
+            symbol: self.symbol.to_lowercase(), // Use lowercase for consistency
+            price,
+            change_24h: Some(change),
+            change_24h_percent: Some(change_percent),
+            volume_24h: None,
+            market_cap: None,
+            timestamp: Utc::now(),
+            source: "alphavantage".to_string(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PriceFeed {
-    pub prices: HashMap<String, PriceData>,
+    pub prices: HashMap<String, PriceData>, // key = symbol.to_lowercase()
     pub last_update: DateTime<Utc>,
 }
 
@@ -109,14 +86,15 @@ impl PriceFeed {
             last_update: Utc::now(),
         }
     }
-    
+
     pub fn update_price(&mut self, price_data: PriceData) {
-        self.prices.insert(price_data.symbol.clone(), price_data);
+        let key = price_data.symbol.to_lowercase();
+        self.prices.insert(key, price_data);
         self.last_update = Utc::now();
     }
     
     pub fn get_price(&self, symbol: &str) -> Option<&PriceData> {
-        self.prices.get(&symbol.to_uppercase())
+        self.prices.get(&symbol.to_lowercase())
     }
     
     pub fn get_all_prices(&self) -> Vec<&PriceData> {

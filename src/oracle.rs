@@ -111,41 +111,19 @@ impl Oracle {
             return Ok(price_data.clone());
         }
         
-        // If not in cache, try to fetch directly using the same logic as update_crypto_prices
-        let symbol_mapping = CryptoFetcher::get_symbol_mapping();
-        let coingecko_id = symbol_mapping.iter()
-            .find(|(_, v)| v.as_str() == symbol.to_uppercase())
-            .map(|(k, _)| k.clone());
         
-        if let Some(id) = coingecko_id {
-            // Try CoinGecko first
-            match self.crypto_fetcher.fetch_coingecko_prices(&[id]).await {
-                Ok(prices) if !prices.is_empty() => {
-                    if let Some(price_data) = prices.first() {
-                        return Ok(price_data.clone());
-                    }
-                }
-                Ok(_) => {
-                    info!("CoinGecko returned empty results for {}, trying Binance fallback", symbol);
-                }
-                Err(_) => {
-                    info!("CoinGecko failed for {}, trying Binance fallback", symbol);
+        // Try Binance fallback
+        match self.crypto_fetcher.fetch_binance_prices(&[symbol.to_string()]).await {
+            Ok(prices) if !prices.is_empty() => {
+                if let Some(price_data) = prices.first() {
+                    return Ok(price_data.clone());
                 }
             }
-            
-            // Try Binance fallback
-            match self.crypto_fetcher.fetch_binance_prices(&[symbol.to_string()]).await {
-                Ok(prices) if !prices.is_empty() => {
-                    if let Some(price_data) = prices.first() {
-                        return Ok(price_data.clone());
-                    }
-                }
-                Ok(_) => {
-                    warn!("Binance returned empty results for {}", symbol);
-                }
-                Err(e) => {
-                    warn!("Binance fallback also failed: {}", e);
-                }
+            Ok(_) => {
+                warn!("Binance returned empty results for {}", symbol);
+            }
+            Err(e) => {
+                warn!("Binance fallback also failed: {}", e);
             }
         }
         
@@ -190,8 +168,7 @@ impl Oracle {
     
     /// Get available crypto symbols
     pub fn get_crypto_symbols(&self) -> Vec<String> {
-        let symbol_mapping = CryptoFetcher::get_symbol_mapping();
-        symbol_mapping.values().cloned().collect()
+        self.config.crypto.symbols.clone()
     }
     
     /// Get available stock symbols
@@ -208,7 +185,7 @@ impl Oracle {
         let crypto_is_empty = crypto_prices.is_empty();
         if !crypto_is_empty {
             println!("\n--- Cryptocurrencies ---");
-            println!("{:<8} {:<12} {:<12} {:<10} {:<10}", "Symbol", "Price ($)", "24h Change", "Change %", "Source");
+            println!("{:<8} {:<12} {:<12} {:<10} {:<10}", "Symbol", "Price ($)", "Change", "Change %", "Source");
             println!("{}", "-".repeat(70));
             
             for price in &crypto_prices {
