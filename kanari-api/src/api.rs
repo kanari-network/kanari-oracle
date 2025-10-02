@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
-use crate::oracle::Oracle;
+use kanari_oracle::oracle::Oracle;
 
 pub type SharedOracle = Arc<RwLock<Oracle>>;
 

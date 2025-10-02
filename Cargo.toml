@@ -9,6 +9,34 @@ resolver = "2"                   # Use the version 2 feature resolver for more c
 # Members List: Crates that are part of this workspace.
 # These are the core components of the "kanari-sdk" project.
 members = [
+    "kanari", 
+    "kanari-api",
     "kanari-oracle",
     
 ]
+
+
+
+[workspace.dependencies]
+tokio = { version = "1.0", features = ["full"] }
+reqwest = { version = "0.11", features = ["json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+thiserror = "1.0"
+uuid = { version = "1.0", features = ["v4"] }
+clap = { version = "4.0", features = ["derive"] }
+env_logger = "0.10"
+log = "0.4"
+# Web API dependencies
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+hyper = "1.0"
+
+
+
+kanari = { path = "./kanari" }
+kanari-api = { path = "./kanari-api" }
+kanari-oracle = { path = "./kanari-oracle" }

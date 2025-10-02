@@ -1,0 +1,15 @@
+[package]
+name = "kanari"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+env_logger.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+
+log.workspace = true
+
+kanari-oracle.workspace = true
+kanari-api.workspace = true

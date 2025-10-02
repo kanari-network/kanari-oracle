@@ -4,18 +4,14 @@ use log::{info, error};
 use std::time::Duration;
 use tokio::time;
 
-mod oracle;
-mod fetchers;
-mod models;
-mod config;
-mod errors;
-mod api;
 
-use oracle::Oracle;
-use config::Config;
+
+use kanari_oracle::oracle::Oracle;
+use kanari_oracle::config::Config;
+use kanari_api::api;
 
 #[derive(Parser)]
-#[command(name = "kanari-oracle")]
+#[command(name = "kanari")]
 #[command(about = "A real-time Oracle system for cryptocurrency and stock prices")]
 struct Cli {
     #[command(subcommand)]
