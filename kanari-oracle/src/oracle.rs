@@ -7,6 +7,7 @@ use crate::models::{PriceData, PriceFeed};
 use crate::fetchers::{PriceFetcher, CryptoFetcher, StockFetcher};
 use crate::errors::{OracleError, Result};
 
+#[derive(Clone)]
 pub struct Oracle {
     config: Config,
     crypto_fetcher: CryptoFetcher,
@@ -259,5 +260,24 @@ impl Oracle {
         }
         
         stats
+    }
+
+    /// Get last update timestamp
+    pub fn get_last_update(&self) -> DateTime<Utc> {
+        self.last_update
+    }
+
+    /// Get all crypto prices as HashMap for API
+    pub fn get_all_crypto_prices_map(&self) -> HashMap<String, PriceData> {
+        self.price_feeds.get("crypto")
+            .map(|feed| feed.get_prices_map().clone())
+            .unwrap_or_default()
+    }
+
+    /// Get all stock prices as HashMap for API
+    pub fn get_all_stock_prices_map(&self) -> HashMap<String, PriceData> {
+        self.price_feeds.get("stock")
+            .map(|feed| feed.get_prices_map().clone())
+            .unwrap_or_default()
     }
 }

@@ -5,29 +5,13 @@
     "binance_secret_key": null,
     "default_vs_currency": "usd",
     "symbols": [
-      "BTC",
-      "ETH",
-      "XRP",
-      "LTC",
-      "BCH",
-      "ADA",
-      "DOT",
-      "LINK",
-      "XLM",
-      "UNI",
-      "DOGE",
-      "SOL",
-      "AVAX",
-      "MATIC",
-      "ATOM",
-      "FTM",
-      "ALGO",
-      "VET",
-      "ICP",
-      "FIL",
-      "TRX",
-      "EOS",
-      "AAVE"
+      "sui",
+      "bitcoin",
+      "ethereum",
+      "tether",
+      "usd-coin",
+      "binancecoin",
+      "ripple"
     ]
   },
   "stocks": {
@@ -87,7 +71,7 @@
     ]
   },
   "general": {
-    "request_timeout": 1,
+    "request_timeout": 30,
     "max_retries": 3,
     "retry_delay": 1000,
     "enable_logging": true

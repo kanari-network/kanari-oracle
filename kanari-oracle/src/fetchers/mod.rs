@@ -10,7 +10,7 @@ pub mod stock;
 pub use crypto::CryptoFetcher;
 pub use stock::StockFetcher;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PriceFetcher {
     client: Client,
     config: Config,

@@ -3,6 +3,7 @@ use crate::models::*;
 use crate::errors::{OracleError, Result};
 use log::{info, warn, error, debug};
 
+#[derive(Clone)]
 pub struct StockFetcher {
     fetcher: PriceFetcher,
 }

@@ -9,6 +9,7 @@ mod fetchers;
 mod models;
 mod config;
 mod errors;
+mod api;
 
 use oracle::Oracle;
 use config::Config;
@@ -29,6 +30,18 @@ enum Commands {
         #[arg(short, long, default_value = "config.json")]
         config: String,
         /// Update interval in seconds
+        #[arg(short, long, default_value = "30")]
+        interval: u64,
+    },
+    /// Start the HTTP API server
+    Server {
+        /// Configuration file path
+        #[arg(short, long, default_value = "config.json")]
+        config: String,
+        /// Port to run the API server on
+        #[arg(short, long, default_value = "3000")]
+        port: u16,
+        /// Update interval in seconds for background updates
         #[arg(short, long, default_value = "30")]
         interval: u64,
     },
@@ -59,6 +72,9 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Start { config, interval } => {
             start_oracle_service(config, interval).await
+        }
+        Commands::Server { config, port, interval } => {
+            start_api_server_with_updates(config, port, interval).await
         }
         Commands::Price { symbol, asset_type } => {
             get_single_price(symbol, asset_type).await
@@ -165,6 +181,55 @@ async fn show_statistics() -> Result<()> {
             "avg_crypto_price" => println!("Average Crypto Price: ${:.2}", value.as_f64().unwrap_or(0.0)),
             "avg_stock_price" => println!("Average Stock Price: ${:.2}", value.as_f64().unwrap_or(0.0)),
             _ => println!("{}: {:?}", key, value),
+        }
+    }
+    
+    Ok(())
+}
+
+async fn start_api_server_with_updates(config_path: String, port: u16, interval: u64) -> Result<()> {
+    info!("Starting Kanari Oracle API Server...");
+    
+    let config = Config::from_file(&config_path).await?;
+    let oracle = Oracle::new(config).await?;
+    
+    info!("Oracle initialized successfully");
+    info!("Starting API server on port {}", port);
+    
+    // Create shared oracle for both API and background updates
+    let shared_oracle = std::sync::Arc::new(tokio::sync::RwLock::new(oracle));
+    let shared_oracle_clone = shared_oracle.clone();
+    
+    // Start background price updater
+    let update_handle = tokio::spawn(async move {
+        let mut update_interval = time::interval(Duration::from_secs(interval));
+        
+        loop {
+            update_interval.tick().await;
+            
+            let mut oracle_lock = shared_oracle_clone.write().await;
+            match oracle_lock.update_all_prices().await {
+                Ok(count) => info!("Background update: Updated {} price feeds", count),
+                Err(e) => error!("Background update failed: {}", e),
+            }
+            oracle_lock.print_current_prices();
+        }
+    });
+    
+    // Start API server with shared oracle
+    let api_handle = tokio::spawn(async move {
+        if let Err(e) = api::start_api_server_with_shared_oracle(shared_oracle, port).await {
+            error!("API server error: {}", e);
+        }
+    });
+    
+    // Wait for both tasks
+    tokio::select! {
+        _ = update_handle => {
+            error!("Background updater stopped unexpectedly");
+        }
+        _ = api_handle => {
+            error!("API server stopped unexpectedly");
         }
     }
     

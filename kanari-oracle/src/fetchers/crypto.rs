@@ -4,6 +4,7 @@ use crate::errors::{OracleError, Result};
 use log::{info, warn, debug, error};
 use std::collections::HashSet;
 
+#[derive(Clone)]
 pub struct CryptoFetcher {
     fetcher: PriceFetcher,
 }

@@ -100,4 +100,8 @@ impl PriceFeed {
     pub fn get_all_prices(&self) -> Vec<&PriceData> {
         self.prices.values().collect()
     }
+    
+    pub fn get_prices_map(&self) -> &HashMap<String, PriceData> {
+        &self.prices
+    }
 }
