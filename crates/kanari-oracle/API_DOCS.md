@@ -1,6 +1,7 @@
 # Kanari Oracle API Documentation
 
 ## Overview
+
 Kanari Oracle provides real-time cryptocurrency and stock price data through HTTP API endpoints. This API is designed for web3 applications that need reliable price feeds.
 
 ## Starting the API Server
@@ -14,6 +15,7 @@ cargo run -- server --port 8080 --config custom-config.json --interval 60
 ```
 
 ## Base URL
+
 ```
 http://localhost:3000
 ```
@@ -21,11 +23,13 @@ http://localhost:3000
 ## API Endpoints
 
 ### 1. Health Check
+
 **GET** `/health`
 
 Returns the current status of the Oracle service.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -39,15 +43,18 @@ Returns the current status of the Oracle service.
 ```
 
 ### 2. Get Specific Price
+
 **GET** `/price/{asset_type}/{symbol}`
 
 Get the current price for a specific symbol.
 
 **Parameters:**
+
 - `asset_type`: "crypto" or "stock"
 - `symbol`: Symbol name (e.g., "bitcoin" for crypto, "AAPL" for stocks)
 
 **Examples:**
+
 ```bash
 # Get Bitcoin price
 curl http://localhost:3000/price/crypto/bitcoin
@@ -57,6 +64,7 @@ curl http://localhost:3000/price/stock/AAPL
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -71,14 +79,17 @@ curl http://localhost:3000/price/stock/AAPL
 ```
 
 ### 3. Get All Prices by Type
+
 **GET** `/prices/{asset_type}`
 
 Get all current prices for a specific asset type.
 
 **Parameters:**
+
 - `asset_type`: "crypto" or "stock"
 
 **Examples:**
+
 ```bash
 # Get all crypto prices
 curl http://localhost:3000/prices/crypto
@@ -88,6 +99,7 @@ curl http://localhost:3000/prices/stock
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -110,14 +122,17 @@ curl http://localhost:3000/prices/stock
 ```
 
 ### 4. List Available Symbols
+
 **GET** `/symbols?asset_type={type}`
 
 List all available symbols for trading.
 
 **Query Parameters:**
+
 - `asset_type` (optional): "crypto", "stock", or omit for all
 
 **Examples:**
+
 ```bash
 # Get all symbols
 curl http://localhost:3000/symbols
@@ -130,6 +145,7 @@ curl http://localhost:3000/symbols?asset_type=stock
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -142,11 +158,13 @@ curl http://localhost:3000/symbols?asset_type=stock
 ```
 
 ### 5. Get Oracle Statistics
+
 **GET** `/stats`
 
 Get detailed statistics about the Oracle service.
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -163,14 +181,17 @@ Get detailed statistics about the Oracle service.
 ```
 
 ### 6. Force Update Prices
+
 **POST** `/update/{asset_type}`
 
 Force an immediate update of price data.
 
 **Parameters:**
+
 - `asset_type`: "crypto", "stock", or "all"
 
 **Examples:**
+
 ```bash
 # Update crypto prices
 curl -X POST http://localhost:3000/update/crypto
@@ -183,6 +204,7 @@ curl -X POST http://localhost:3000/update/all
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -194,6 +216,7 @@ curl -X POST http://localhost:3000/update/all
 ## Web3 Integration Examples
 
 ### JavaScript/TypeScript
+
 ```javascript
 class KanariOracle {
   constructor(baseUrl = 'http://localhost:3000') {
@@ -234,6 +257,7 @@ console.log(`BTC Price: $${btcPrice.price}`);
 ```
 
 ### Python
+
 ```python
 import requests
 
@@ -268,6 +292,7 @@ print(f"BTC Price: ${btc_price['price']}")
 ```
 
 ### Rust
+
 ```rust
 use reqwest::Client;
 use serde_json::Value;
@@ -308,6 +333,7 @@ impl KanariOracle {
 ## Error Responses
 
 When an error occurs, the API returns:
+
 ```json
 {
   "success": false,
@@ -317,6 +343,7 @@ When an error occurs, the API returns:
 ```
 
 Common error status codes:
+
 - `200 OK`: Success (check `success` field in response)
 - `500 Internal Server Error`: Server error
 
@@ -345,6 +372,7 @@ The API includes CORS headers to allow cross-origin requests from web browsers.
 ## Rate Limiting
 
 The Oracle respects upstream API rate limits:
+
 - **CoinGecko**: Without API key: 10-50 calls/minute, With API key: higher limits
 - **Binance**: 1200 requests per minute
 - **Alpha Vantage**: 5 calls per minute (free tier)

@@ -15,6 +15,7 @@
 ## Supported Assets
 
 ### Cryptocurrencies
+
 - Bitcoin (BTC)
 - Ethereum (ETH)
 - Binance Coin (BNB)
@@ -27,6 +28,7 @@
 - Polygon (MATIC)
 
 ### Stocks
+
 - Apple (AAPL)
 - Google (GOOGL)
 - Microsoft (MSFT)
@@ -41,17 +43,20 @@
 ## Installation
 
 1. **Clone the repository:**
+
 ```bash
 git clone <repository-url>
 cd kanari-oracle
 ```
 
 2. **Build the project:**
+
 ```bash
 cargo build --release
 ```
 
 3. **Run the oracle:**
+
 ```bash
 cargo run -- --help
 ```
@@ -59,6 +64,7 @@ cargo run -- --help
 ## Usage
 
 ### 1. Start Oracle Service
+
 Start the continuous price monitoring service:
 
 ```bash
@@ -73,6 +79,7 @@ cargo run -- start --config my-config.json
 ```
 
 ### 2. Get Single Price
+
 Fetch current price for a specific asset:
 
 ```bash
@@ -84,6 +91,7 @@ cargo run -- price AAPL --asset-type stock
 ```
 
 ### 3. List Available Symbols
+
 View all supported assets:
 
 ```bash
@@ -139,11 +147,12 @@ On first run, a `config.json` file will be created with default settings. You ca
 ### API Keys (Optional but Recommended)
 
 While the oracle works without API keys using free endpoints, adding API keys provides:
+
 - Higher rate limits
 - More reliable service
 - Additional data points
 
-#### Getting API Keys:
+#### Getting API Keys
 
 1. **CoinGecko**: [Get API Key](https://www.coingecko.com/api)
 2. **Alpha Vantage**: [Get Free API Key](https://www.alphavantage.co/support/#api-key)

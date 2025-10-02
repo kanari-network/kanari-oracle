@@ -225,8 +225,8 @@ pub fn create_router(oracle: SharedOracle) -> Router {
         .route("/health", get(health_check))
         
         // Price endpoints
-        .route("/price/:asset_type/:symbol", get(get_price))
-        .route("/prices/:asset_type", get(get_all_prices))
+        .route("/price/{asset_type}/{symbol}", get(get_price))
+        .route("/prices/{asset_type}", get(get_all_prices))
         
         // Symbols
         .route("/symbols", get(list_symbols))
@@ -235,7 +235,7 @@ pub fn create_router(oracle: SharedOracle) -> Router {
         .route("/stats", get(get_stats))
         
         // Update endpoints
-        .route("/update/:asset_type", post(update_prices))
+        .route("/update/{asset_type}", post(update_prices))
         
         // Add state
         .with_state(oracle)

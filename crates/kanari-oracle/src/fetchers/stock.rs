@@ -2,6 +2,7 @@ use super::PriceFetcher;
 use crate::models::*;
 use crate::errors::{OracleError, Result};
 use log::{info, warn, error, debug};
+use futures::future::join_all;
 
 #[derive(Clone)]
 pub struct StockFetcher {
@@ -15,6 +16,9 @@ impl StockFetcher {
     
     /// Fetch stock price from Alpha Vantage API
     pub async fn fetch_alpha_vantage_price(&self, symbol: &str) -> Result<PriceData> {
+        if symbol.is_empty() {
+            return Err(OracleError::ApiError("Empty symbol provided".to_string()));
+        }
         let api_key = self.fetcher.config().stocks.alpha_vantage_api_key
             .as_ref()
             .ok_or_else(|| OracleError::ConfigError("Alpha Vantage API key not configured".to_string()))?;
@@ -26,7 +30,6 @@ impl StockFetcher {
         
         debug!("Fetching Alpha Vantage price for: {}", symbol);
         
-        let url = url.clone();
         let client = self.fetcher.client().clone();
         
         self.fetcher.retry_with_backoff(|| async {
@@ -64,6 +67,9 @@ impl StockFetcher {
     
     /// Fetch stock price from Finnhub API
     pub async fn fetch_finnhub_price(&self, symbol: &str) -> Result<PriceData> {
+        if symbol.is_empty() {
+            return Err(OracleError::ApiError("Empty symbol provided".to_string()));
+        }
         let api_key = self.fetcher.config().stocks.finnhub_api_key
             .as_ref()
             .ok_or_else(|| OracleError::ConfigError("Finnhub API key not configured".to_string()))?;
@@ -75,7 +81,6 @@ impl StockFetcher {
         
         debug!("Fetching Finnhub price for: {}", symbol);
         
-        let url = url.clone();
         let symbol = symbol.to_string();
         let client = self.fetcher.client().clone();
         
@@ -110,13 +115,18 @@ impl StockFetcher {
     }
     
     /// Fetch price from free stock API (alternative when API keys not available)
+    ///
+    /// Note: Free Yahoo endpoints can be rate-limited or blocked. Prefer API-key providers
+    /// (e.g., Alpha Vantage; consider adding alternatives like Twelve Data or Polygon with free tiers).
     pub async fn fetch_free_stock_price(&self, symbol: &str) -> Result<PriceData> {
+        if symbol.is_empty() {
+            return Err(OracleError::ApiError("Empty symbol provided".to_string()));
+        }
         // Using Yahoo Finance alternative API (no API key required)
         let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{}", symbol);
         
         debug!("Fetching free stock price for: {}", symbol);
         
-        let url = url.clone();
         let symbol = symbol.to_string();
         let client = self.fetcher.client().clone();
         
@@ -170,39 +180,53 @@ impl StockFetcher {
             return Ok(Vec::new());
         }
         
-        let mut prices = Vec::new();
-        
-        for symbol in symbols {
-            // Try different APIs in order of preference
-            let price_result = if self.fetcher.config().stocks.alpha_vantage_api_key.is_some() {
-                self.fetch_alpha_vantage_price(symbol).await
-            } else if self.fetcher.config().stocks.finnhub_api_key.is_some() {
-                self.fetch_finnhub_price(symbol).await
-            } else {
-                self.fetch_free_stock_price(symbol).await
-            };
-            
-            match price_result {
-                Ok(price_data) => {
-                    prices.push(price_data);
-                }
-                Err(e) => {
-                    warn!("Failed to fetch price for {}: {}", symbol, e);
-                    
-                    // Try fallback to free API if paid APIs fail
-                    if self.fetcher.config().stocks.alpha_vantage_api_key.is_some() || 
-                       self.fetcher.config().stocks.finnhub_api_key.is_some() {
-                        match self.fetch_free_stock_price(symbol).await {
-                            Ok(price_data) => {
-                                info!("Successfully fetched {} price using fallback API", symbol);
-                                prices.push(price_data);
-                            }
-                            Err(fallback_error) => {
-                                error!("All APIs failed for {}: {} (fallback: {})", symbol, e, fallback_error);
+        let use_alpha = self.fetcher.config().stocks.alpha_vantage_api_key.is_some();
+        let use_finnhub = self.fetcher.config().stocks.finnhub_api_key.is_some();
+
+        let futures: Vec<_> = symbols
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let s = s.to_string();
+                let use_alpha = use_alpha;
+                let use_finnhub = use_finnhub;
+                async move {
+                    let primary = if use_alpha {
+                        self.fetch_alpha_vantage_price(&s).await
+                    } else if use_finnhub {
+                        self.fetch_finnhub_price(&s).await
+                    } else {
+                        self.fetch_free_stock_price(&s).await
+                    };
+                    match primary {
+                        Ok(price_data) => Ok(price_data),
+                        Err(e) => {
+                            warn!("Failed to fetch price for {}: {}", s, e);
+                            if use_alpha || use_finnhub {
+                                match self.fetch_free_stock_price(&s).await {
+                                    Ok(price_data) => {
+                                        info!("Successfully fetched {} price using fallback API", s);
+                                        Ok(price_data)
+                                    }
+                                    Err(fallback_error) => {
+                                        error!("All APIs failed for {}: {} (fallback: {})", s, e, fallback_error);
+                                        Err(fallback_error)
+                                    }
+                                }
+                            } else {
+                                Err(e)
                             }
                         }
                     }
                 }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+        let mut prices = Vec::new();
+        for result in results {
+            if let Ok(price_data) = result {
+                prices.push(price_data);
             }
         }
         

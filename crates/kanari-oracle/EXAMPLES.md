@@ -123,6 +123,7 @@ The system works without API keys using free endpoints:
 ## Expected Output Examples
 
 ### Single Price Query
+
 ```
 $ cargo run -- price AAPL --asset-type stock
 Current price for AAPL: $255.74
@@ -130,6 +131,7 @@ Last updated: 2025-10-01 14:38:41 UTC
 ```
 
 ### Oracle Service Output
+
 ```
 $ cargo run -- start --interval 30
 Starting Kanari Oracle Service...
@@ -156,6 +158,7 @@ Updated 6 price feeds
 ```
 
 ### List Assets Output
+
 ```
 $ cargo run -- list
 Available Cryptocurrencies:
@@ -186,10 +189,12 @@ Available Stocks:
 ## API Sources Used
 
 ### Cryptocurrencies
+
 - **Primary**: CoinGecko API (comprehensive data, rate limited without API key)
 - **Fallback**: Binance API (basic price data, higher rate limits)
 
 ### Stocks
+
 - **Primary**: Alpha Vantage (with API key)
 - **Secondary**: Finnhub (with API key)  
 - **Fallback**: Yahoo Finance (free, no API key required)
