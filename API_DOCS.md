@@ -99,6 +99,12 @@ curl -X POST http://localhost:3000/users/login \
   -d '{"username":"alice","password":"secret123"}'
 ```
 
+**PowerShell Example:**
+```powershell
+$body = @{ username="alice"; password="secret123" } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:3000/users/login" -Method Post -Body $body -ContentType "application/json"
+```
+
 **Response:**
 ```json
 {
@@ -110,6 +116,126 @@ curl -X POST http://localhost:3000/users/login \
   "error": null
 }
 ```
+
+### Get User Profile
+
+**GET** `/users/profile?token={your_token}`
+
+Get the current user's profile information.
+
+**Parameters:**
+- `token`: Your API token (query parameter)
+
+**Example:**
+```bash
+curl "http://localhost:3000/users/profile?token=YOUR_TOKEN_HERE"
+```
+
+**PowerShell Example:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/users/profile?token=YOUR_TOKEN_HERE"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "username": "alice",
+    "email": "alice@example.com",
+    "created_at": "2025-10-03T14:30:00Z"
+  },
+  "error": null
+}
+```
+
+### List All Users
+
+**GET** `/users/list?token={your_token}`
+
+Get a list of all registered users (admin function).
+
+**Parameters:**
+- `token`: Your API token (query parameter)
+
+**Example:**
+```bash
+curl "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
+```
+
+**PowerShell Example:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "users": [
+      {
+        "id": 1,
+        "username": "alice",
+        "email": "alice@example.com",
+        "created_at": "2025-10-03T14:30:00Z"
+      },
+      {
+        "id": 2,
+        "username": "bob",
+        "email": "bob@example.com",
+        "created_at": "2025-10-03T15:00:00Z"
+      }
+    ],
+    "total_count": 2
+  },
+  "error": null
+}
+```
+
+### Delete User Account
+
+**POST** `/users/delete?token={your_token}`
+
+Delete the current user's account permanently. Requires password confirmation.
+
+**Parameters:**
+- `token`: Your API token (query parameter)
+
+**Request Body:**
+```json
+{
+  "password": "current_password"
+}
+```
+
+**Example:**
+```bash
+curl -X POST "http://localhost:3000/users/delete?token=YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"your_password"}'
+```
+
+**PowerShell Example:**
+```powershell
+$body = @{ password="your_password" } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:3000/users/delete?token=YOUR_TOKEN_HERE" -Method Post -Body $body -ContentType "application/json"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": "Account deleted successfully",
+  "error": null
+}
+```
+
+**⚠️ Warning:** This action is permanent and will delete:
+- User account and profile
+- All associated API tokens
+- Cannot be undone
 
 ### Using API Tokens
 
@@ -439,6 +565,34 @@ class KanariOracle {
     const data = await response.json();
     return data.success ? data.data : null;
   }
+
+  async getUserProfile() {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/users/profile?token=${this.token}`);
+    const data = await response.json();
+    return data.success ? data.data : null;
+  }
+
+  async listAllUsers() {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/users/list?token=${this.token}`);
+    const data = await response.json();
+    return data.success ? data.data : null;
+  }
+
+  async deleteAccount(password) {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/users/delete?token=${this.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await response.json();
+    if (data.success) {
+      this.token = null; // Clear token since account is deleted
+    }
+    return data.success ? data.data : null;
+  }
 }
 
 // Usage Example
@@ -568,6 +722,33 @@ class KanariOracle:
         response = requests.get(f'{self.base_url}/stats?token={self.token}')
         data = response.json()
         return data['data'] if data['success'] else None
+
+    def get_user_profile(self) -> Optional[Dict[str, Any]]:
+        """Get current user profile"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/users/profile?token={self.token}')
+        data = response.json()
+        return data['data'] if data['success'] else None
+
+    def list_all_users(self) -> Optional[Dict[str, Any]]:
+        """List all users (admin function)"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/users/list?token={self.token}')
+        data = response.json()
+        return data['data'] if data['success'] else None
+
+    def delete_account(self, password: str) -> bool:
+        """Delete current user account permanently"""
+        self._check_auth()
+        response = requests.post(
+            f'{self.base_url}/users/delete?token={self.token}',
+            json={"password": password},
+            headers={'Content-Type': 'application/json'}
+        )
+        data = response.json()
+        if data['success']:
+            self.token = None  # Clear token since account is deleted
+        return data['success']
 
 # Usage Example
 def main():

@@ -333,6 +333,9 @@ pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
         // User endpoints
         .route("/users/register", post(register_user))
         .route("/users/login", post(login_user))
+        .route("/users/list", get(list_users))
+        .route("/users/profile", get(get_user_profile))
+        .route("/users/delete", post(delete_user_account))
         // Add state
         .with_state(state)
         // Add middleware
@@ -357,6 +360,25 @@ pub struct LoginRequest {
 pub struct TokenResponse {
     pub token: String,
     pub expires_at: String,
+}
+
+#[derive(Serialize)]
+pub struct UserProfile {
+    pub id: i32,
+    pub username: String,
+    pub email: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+pub struct UserListResponse {
+    pub users: Vec<UserProfile>,
+    pub total_count: i32,
+}
+
+#[derive(Deserialize)]
+pub struct DeleteAccountRequest {
+    pub password: String,
 }
 
 // Register a new user and return an API token
@@ -499,6 +521,221 @@ pub async fn create_monthly_token(db: &DbPool, owner: &str) -> anyhow::Result<St
         .map_err(|e| anyhow!(e.to_string()))?;
 
     Ok(token)
+}
+
+// List all users (admin endpoint - requires valid token)
+pub async fn list_users(
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<UserListResponse>>, StatusCode> {
+    if let Some(token) = query.get("token") {
+        if !validate_token(&state.db, token).await {
+            return Ok(Json(ApiResponse::error(
+                "Invalid or expired token".to_string(),
+            )));
+        }
+    } else {
+        return Ok(Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        )));
+    }
+
+    let rows = match sqlx::query(
+        "SELECT id, username, email, created_at FROM users ORDER BY created_at DESC"
+    )
+    .fetch_all(&state.db)
+    .await {
+        Ok(rows) => rows,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let mut users = Vec::new();
+    for row in &rows {
+        let id: i32 = row.try_get("id").unwrap_or(0);
+        let username: String = row.try_get("username").unwrap_or_default();
+        let email: Option<String> = row.try_get("email").ok();
+        let created_at_naive: NaiveDateTime = row.try_get("created_at").unwrap_or_default();
+        let created_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_at_naive, Utc);
+
+        users.push(UserProfile {
+            id,
+            username,
+            email,
+            created_at: created_at.to_rfc3339(),
+        });
+    }
+
+    let total_count = users.len() as i32;
+    let response = UserListResponse {
+        users,
+        total_count,
+    };
+
+    Ok(Json(ApiResponse::success(response)))
+}
+
+// Get current user profile
+pub async fn get_user_profile(
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<UserProfile>>, StatusCode> {
+    let token = match query.get("token") {
+        Some(t) => t,
+        None => {
+            return Ok(Json(ApiResponse::error(
+                "Missing token query parameter".to_string(),
+            )));
+        }
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error(
+            "Invalid or expired token".to_string(),
+        )));
+    }
+
+    // Get username from token
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error(
+                "Token not found".to_string(),
+            )));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let username: String = match owner_row.try_get("owner") {
+        Ok(u) => u,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Get user details
+    let user_row = match sqlx::query(
+        "SELECT id, username, email, created_at FROM users WHERE username = $1"
+    )
+    .bind(&username)
+    .fetch_optional(&state.db)
+    .await {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error(
+                "User not found".to_string(),
+            )));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let id: i32 = user_row.try_get("id").unwrap_or(0);
+    let email: Option<String> = user_row.try_get("email").ok();
+    let created_at_naive: NaiveDateTime = user_row.try_get("created_at").unwrap_or_default();
+    let created_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_at_naive, Utc);
+
+    let profile = UserProfile {
+        id,
+        username,
+        email,
+        created_at: created_at.to_rfc3339(),
+    };
+
+    Ok(Json(ApiResponse::success(profile)))
+}
+
+// Delete user account (requires password confirmation)
+pub async fn delete_user_account(
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<DeleteAccountRequest>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
+    let token = match query.get("token") {
+        Some(t) => t,
+        None => {
+            return Ok(Json(ApiResponse::error(
+                "Missing token query parameter".to_string(),
+            )));
+        }
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error(
+            "Invalid or expired token".to_string(),
+        )));
+    }
+
+    // Get username from token
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error(
+                "Token not found".to_string(),
+            )));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let username: String = match owner_row.try_get("owner") {
+        Ok(u) => u,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Verify password
+    let user_row = match sqlx::query("SELECT password_hash FROM users WHERE username = $1")
+        .bind(&username)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error(
+                "User not found".to_string(),
+            )));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let hash_val: String = match user_row.try_get("password_hash") {
+        Ok(h) => h,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Verify password
+    let parsed_hash = match PasswordHash::new(&hash_val) {
+        Ok(h) => h,
+        Err(_) => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid password hash".to_string(),
+            )));
+        }
+    };
+
+    if Argon2::default()
+        .verify_password(payload.password.as_bytes(), &parsed_hash)
+        .is_err()
+    {
+        return Ok(Json(ApiResponse::error(
+            "Invalid password".to_string(),
+        )));
+    }
+
+    // Delete user (this will cascade delete tokens due to foreign key)
+    match sqlx::query("DELETE FROM users WHERE username = $1")
+        .bind(&username)
+        .execute(&state.db)
+        .await
+    {
+        Ok(_) => Ok(Json(ApiResponse::success(
+            "Account deleted successfully".to_string(),
+        ))),
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
 }
 
 // Initialize database tables if they don't exist
