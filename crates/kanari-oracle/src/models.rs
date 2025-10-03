@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,12 +49,13 @@ pub struct StockQuote {
 
 impl StockQuote {
     /// Convert StockQuote to PriceData
-    
+
     #[allow(dead_code)]
     pub fn to_price_data(&self) -> Option<PriceData> {
         let price = self.price.trim().parse::<f64>().ok()?;
         let change = self.change.trim().parse::<f64>().ok()?;
-        let change_percent = self.change_percent
+        let change_percent = self
+            .change_percent
             .trim()
             .trim_end_matches('%')
             .parse::<f64>()
@@ -92,15 +93,15 @@ impl PriceFeed {
         self.prices.insert(key, price_data);
         self.last_update = Utc::now();
     }
-    
+
     pub fn get_price(&self, symbol: &str) -> Option<&PriceData> {
         self.prices.get(&symbol.to_lowercase())
     }
-    
+
     pub fn get_all_prices(&self) -> Vec<&PriceData> {
         self.prices.values().collect()
     }
-    
+
     pub fn get_prices_map(&self) -> &HashMap<String, PriceData> {
         &self.prices
     }
