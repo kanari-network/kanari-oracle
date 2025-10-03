@@ -2,9 +2,19 @@
 
 ## Overview
 
-Kanari Oracle provides real-time cryptocurrency and stock price data through HTTP API endpoints. This API is designed for web3 applications that need reliable price feeds.
+Kanari Oracle provides real-time cryptocurrency and stock price data through secure HTTP API endpoints. This API is designed for web3 applications, trading bots, and financial services that need reliable and authenticated price feeds.
 
-## Starting the API Server
+**Key Features:**
+- Real-time crypto and stock price data
+- User authentication with secure token management
+- Background price updates every 30 seconds
+- Multiple data sources with fallback mechanisms
+- CORS support for web applications
+- Rate limiting and error handling
+
+## Quick Start
+
+### 1. Starting the API Server
 
 ```bash
 # Start the API server on default port 3000
@@ -14,37 +24,135 @@ cargo run -- server
 cargo run -- server --port 8080 --config custom-config.json --interval 60
 ```
 
-## Base URL
+### 2. Database Setup
+
+Ensure PostgreSQL is running and create a `.env` file in the project root:
+
+```env
+DATABASE_URL="postgresql://username:password@localhost:5432/kanari_db"
+```
+
+The API will automatically create required tables on first startup.
+
+### 3. Base URL
 
 ```
 http://localhost:3000
 ```
 
-## API Endpoints
+## Authentication
 
-### 1. Health Check
+Most API endpoints require authentication using API tokens. You need to register a user account and obtain an API token first.
 
-**GET** `/health`
+### User Registration
 
-Returns the current status of the Oracle service.
+**POST** `/users/register`
+
+Create a new user account and receive an API token.
+
+**Request Body:**
+```json
+{
+  "username": "your_username",
+  "password": "secure_password",
+  "owner_email": "user@example.com"  // optional
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:3000/users/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"secret123","owner_email":"alice@example.com"}'
+```
 
 **Response:**
-
 ```json
 {
   "success": true,
   "data": {
-    "status": "healthy",
-    "last_update": "2025-10-02T10:30:00Z",
-    "total_symbols": 19
+    "token": "a868de0d-bcf8-4c9d-ba03-bf6b1d861f9a",
+    "expires_at": "2025-11-02T14:30:00Z"
   },
   "error": null
 }
 ```
 
-### 2. Get Specific Price
+### User Login
 
-**GET** `/price/{asset_type}/{symbol}`
+**POST** `/users/login`
+
+Login with existing credentials to get a new API token.
+
+**Request Body:**
+```json
+{
+  "username": "your_username",
+  "password": "your_password"
+}
+```
+
+**Example:**
+```bash
+curl -X POST http://localhost:3000/users/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","password":"secret123"}'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "token": "new-token-uuid-here",
+    "expires_at": "2025-11-02T14:30:00Z"
+  },
+  "error": null
+}
+```
+
+### Using API Tokens
+
+Include your token as a query parameter in all authenticated requests:
+
+```
+GET /price/crypto/bitcoin?token=YOUR_TOKEN_HERE
+```
+
+**Token Details:**
+- Tokens expire after 30 days
+- Each login/registration generates a new token
+- Store tokens securely and refresh before expiration
+
+## API Endpoints
+
+### 1. Health Check (Public)
+
+**GET** `/health`
+
+Returns the current status of the Oracle service. No authentication required.
+
+**Example:**
+```bash
+curl http://localhost:3000/health
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "status": "healthy",
+    "last_update": "2025-10-03T14:52:59Z",
+    "total_symbols": 56
+  },
+  "error": null
+}
+```
+
+### 2. Get Specific Price (Authenticated)
+
+**GET** `/price/{asset_type}/{symbol}?token={your_token}`
 
 Get the current price for a specific symbol.
 
@@ -52,15 +160,16 @@ Get the current price for a specific symbol.
 
 - `asset_type`: "crypto" or "stock"
 - `symbol`: Symbol name (e.g., "bitcoin" for crypto, "AAPL" for stocks)
+- `token`: Your API token (query parameter)
 
 **Examples:**
 
 ```bash
 # Get Bitcoin price
-curl http://localhost:3000/price/crypto/bitcoin
+curl "http://localhost:3000/price/crypto/bitcoin?token=YOUR_TOKEN_HERE"
 
 # Get Apple stock price
-curl http://localhost:3000/price/stock/AAPL
+curl "http://localhost:3000/price/stock/AAPL?token=YOUR_TOKEN_HERE"
 ```
 
 **Response:**
@@ -70,32 +179,33 @@ curl http://localhost:3000/price/stock/AAPL
   "success": true,
   "data": {
     "symbol": "BITCOIN",
-    "price": 43250.50,
-    "timestamp": "2025-10-02T10:30:00Z",
+    "price": 120916.00,
+    "timestamp": "2025-10-03T14:52:59Z",
     "asset_type": "crypto"
   },
   "error": null
 }
 ```
 
-### 3. Get All Prices by Type
+### 3. Get All Prices by Type (Authenticated)
 
-**GET** `/prices/{asset_type}`
+**GET** `/prices/{asset_type}?token={your_token}`
 
 Get all current prices for a specific asset type.
 
 **Parameters:**
 
 - `asset_type`: "crypto" or "stock"
+- `token`: Your API token (query parameter)
 
 **Examples:**
 
 ```bash
 # Get all crypto prices
-curl http://localhost:3000/prices/crypto
+curl "http://localhost:3000/prices/crypto?token=YOUR_TOKEN_HERE"
 
 # Get all stock prices
-curl http://localhost:3000/prices/stock
+curl "http://localhost:3000/prices/stock?token=YOUR_TOKEN_HERE"
 ```
 
 **Response:**
@@ -106,14 +216,14 @@ curl http://localhost:3000/prices/stock
   "data": [
     {
       "symbol": "bitcoin",
-      "price": 43250.50,
-      "timestamp": "2025-10-02T10:30:00Z",
+      "price": 120916.00,
+      "timestamp": "2025-10-03T14:52:59Z",
       "asset_type": "crypto"
     },
     {
-      "symbol": "ethereum",
-      "price": 2650.75,
-      "timestamp": "2025-10-02T10:30:00Z",
+      "symbol": "ethereum", 
+      "price": 4483.96,
+      "timestamp": "2025-10-03T14:52:59Z",
       "asset_type": "crypto"
     }
   ],
@@ -121,27 +231,28 @@ curl http://localhost:3000/prices/stock
 }
 ```
 
-### 4. List Available Symbols
+### 4. List Available Symbols (Authenticated)
 
-**GET** `/symbols?asset_type={type}`
+**GET** `/symbols?token={your_token}&asset_type={type}`
 
 List all available symbols for trading.
 
 **Query Parameters:**
 
+- `token`: Your API token (required)
 - `asset_type` (optional): "crypto", "stock", or omit for all
 
 **Examples:**
 
 ```bash
 # Get all symbols
-curl http://localhost:3000/symbols
+curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE"
 
-# Get only crypto symbols
-curl http://localhost:3000/symbols?asset_type=crypto
+# Get only crypto symbols  
+curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE&asset_type=crypto"
 
 # Get only stock symbols
-curl http://localhost:3000/symbols?asset_type=stock
+curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE&asset_type=stock"
 ```
 
 **Response:**
@@ -150,18 +261,24 @@ curl http://localhost:3000/symbols?asset_type=stock
 {
   "success": true,
   "data": {
-    "crypto": ["bitcoin", "ethereum", "binancecoin", "cardano"],
-    "stocks": ["AAPL", "GOOGL", "MSFT", "TSLA"]
+    "crypto": ["bitcoin", "ethereum", "binancecoin", "ripple", "sui", "tether", "usd-coin"],
+    "stocks": ["AAPL", "GOOGL", "MSFT", "TSLA", "NVDA", "META", "AMZN"]
   },
   "error": null
 }
 ```
 
-### 5. Get Oracle Statistics
+### 5. Get Oracle Statistics (Authenticated)
 
-**GET** `/stats`
+**GET** `/stats?token={your_token}`
 
 Get detailed statistics about the Oracle service.
+
+**Example:**
+
+```bash
+curl "http://localhost:3000/stats?token=YOUR_TOKEN_HERE"
+```
 
 **Response:**
 
@@ -169,10 +286,10 @@ Get detailed statistics about the Oracle service.
 {
   "success": true,
   "data": {
-    "total_crypto_symbols": 9,
-    "total_stock_symbols": 10,
-    "last_update": "2025-10-02T10:30:00Z",
-    "avg_crypto_price": 15420.30,
+    "total_crypto_symbols": 7,
+    "total_stock_symbols": 49,
+    "last_update": "2025-10-03T14:52:59Z",
+    "avg_crypto_price": 18782.02,
     "avg_stock_price": 285.67,
     "uptime_seconds": 0
   },
@@ -180,27 +297,28 @@ Get detailed statistics about the Oracle service.
 }
 ```
 
-### 6. Force Update Prices
+### 6. Force Update Prices (Authenticated)
 
-**POST** `/update/{asset_type}`
+**POST** `/update/{asset_type}?token={your_token}`
 
 Force an immediate update of price data.
 
 **Parameters:**
 
 - `asset_type`: "crypto", "stock", or "all"
+- `token`: Your API token (query parameter)
 
 **Examples:**
 
 ```bash
 # Update crypto prices
-curl -X POST http://localhost:3000/update/crypto
+curl -X POST "http://localhost:3000/update/crypto?token=YOUR_TOKEN_HERE"
 
-# Update stock prices
-curl -X POST http://localhost:3000/update/stock
+# Update stock prices  
+curl -X POST "http://localhost:3000/update/stock?token=YOUR_TOKEN_HERE"
 
 # Update all prices
-curl -X POST http://localhost:3000/update/all
+curl -X POST "http://localhost:3000/update/all?token=YOUR_TOKEN_HERE"
 ```
 
 **Response:**
@@ -208,98 +326,317 @@ curl -X POST http://localhost:3000/update/all
 ```json
 {
   "success": true,
-  "data": "Updated 9 price feeds",
+  "data": "Updated 56 price feeds",
   "error": null
 }
 ```
 
-## Web3 Integration Examples
+## SDK Examples & Integration
 
-### JavaScript/TypeScript
+### Complete Workflow Example
+
+```bash
+# 1. Register a new user
+curl -X POST http://localhost:3000/users/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"trader1","password":"secure123","owner_email":"trader@example.com"}'
+
+# Response: {"success":true,"data":{"token":"abc-123-def","expires_at":"2025-11-02T..."}}
+
+# 2. Use the token to get prices
+curl "http://localhost:3000/price/crypto/bitcoin?token=abc-123-def"
+curl "http://localhost:3000/prices/crypto?token=abc-123-def"
+curl "http://localhost:3000/symbols?token=abc-123-def"
+```
+
+### JavaScript/TypeScript SDK
 
 ```javascript
 class KanariOracle {
   constructor(baseUrl = 'http://localhost:3000') {
     this.baseUrl = baseUrl;
+    this.token = null;
+  }
+
+  async register(username, password, email = null) {
+    const response = await fetch(`${this.baseUrl}/users/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password, owner_email: email })
+    });
+    const data = await response.json();
+    if (data.success) {
+      this.token = data.data.token;
+      return data.data;
+    }
+    throw new Error(data.error || 'Registration failed');
+  }
+
+  async login(username, password) {
+    const response = await fetch(`${this.baseUrl}/users/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await response.json();
+    if (data.success) {
+      this.token = data.data.token;
+      return data.data;
+    }
+    throw new Error(data.error || 'Login failed');
   }
 
   async getCryptoPrice(symbol) {
-    const response = await fetch(`${this.baseUrl}/price/crypto/${symbol}`);
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/price/crypto/${symbol}?token=${this.token}`);
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async getStockPrice(symbol) {
-    const response = await fetch(`${this.baseUrl}/price/stock/${symbol}`);
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/price/stock/${symbol}?token=${this.token}`);
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async getAllCryptoPrices() {
-    const response = await fetch(`${this.baseUrl}/prices/crypto`);
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/prices/crypto?token=${this.token}`);
     const data = await response.json();
     return data.success ? data.data : [];
   }
 
+  async getAllStockPrices() {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/prices/stock?token=${this.token}`);
+    const data = await response.json();
+    return data.success ? data.data : [];
+  }
+
+  async getSymbols(assetType = null) {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const url = assetType 
+      ? `${this.baseUrl}/symbols?token=${this.token}&asset_type=${assetType}`
+      : `${this.baseUrl}/symbols?token=${this.token}`;
+    const response = await fetch(url);
+    const data = await response.json();
+    return data.success ? data.data : null;
+  }
+
   async forceUpdate(assetType = 'all') {
-    const response = await fetch(`${this.baseUrl}/update/${assetType}`, {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/update/${assetType}?token=${this.token}`, {
       method: 'POST'
     });
     const data = await response.json();
     return data.success;
   }
+
+  async getStats() {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/stats?token=${this.token}`);
+    const data = await response.json();
+    return data.success ? data.data : null;
+  }
 }
 
-// Usage
-const oracle = new KanariOracle();
-const btcPrice = await oracle.getCryptoPrice('bitcoin');
-console.log(`BTC Price: $${btcPrice.price}`);
+// Usage Example
+async function example() {
+  const oracle = new KanariOracle();
+  
+  try {
+    // Register or login
+    await oracle.register('trader1', 'secure123', 'trader@example.com');
+    // Or: await oracle.login('existing_user', 'password');
+    
+    // Get individual prices
+    const btcPrice = await oracle.getCryptoPrice('bitcoin');
+    console.log(`BTC Price: $${btcPrice.price}`);
+    
+    // Get all crypto prices
+    const allCrypto = await oracle.getAllCryptoPrices();
+    console.log(`Found ${allCrypto.length} crypto prices`);
+    
+    // Get symbols
+    const symbols = await oracle.getSymbols();
+    console.log(`Crypto symbols: ${symbols.crypto.join(', ')}`);
+    
+    // Force update
+    const updated = await oracle.forceUpdate('crypto');
+    console.log(`Update successful: ${updated}`);
+    
+  } catch (error) {
+    console.error('API Error:', error.message);
+  }
+}
 ```
 
-### Python
+### Python SDK
 
 ```python
 import requests
+from typing import Optional, Dict, List, Any
 
 class KanariOracle:
-    def __init__(self, base_url='http://localhost:3000'):
+    def __init__(self, base_url: str = 'http://localhost:3000'):
         self.base_url = base_url
+        self.token: Optional[str] = None
 
-    def get_crypto_price(self, symbol):
-        response = requests.get(f'{self.base_url}/price/crypto/{symbol}')
+    def register(self, username: str, password: str, email: Optional[str] = None) -> Dict[str, Any]:
+        """Register a new user and get API token"""
+        payload = {"username": username, "password": password}
+        if email:
+            payload["owner_email"] = email
+            
+        response = requests.post(
+            f'{self.base_url}/users/register',
+            json=payload,
+            headers={'Content-Type': 'application/json'}
+        )
+        data = response.json()
+        if data['success']:
+            self.token = data['data']['token']
+            return data['data']
+        raise Exception(data.get('error', 'Registration failed'))
+
+    def login(self, username: str, password: str) -> Dict[str, Any]:
+        """Login with existing credentials"""
+        response = requests.post(
+            f'{self.base_url}/users/login',
+            json={"username": username, "password": password},
+            headers={'Content-Type': 'application/json'}
+        )
+        data = response.json()
+        if data['success']:
+            self.token = data['data']['token']
+            return data['data']
+        raise Exception(data.get('error', 'Login failed'))
+
+    def _check_auth(self):
+        if not self.token:
+            raise Exception('Not authenticated. Call login() or register() first.')
+
+    def get_crypto_price(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get current price for a cryptocurrency"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/price/crypto/{symbol}?token={self.token}')
         data = response.json()
         return data['data'] if data['success'] else None
 
-    def get_stock_price(self, symbol):
-        response = requests.get(f'{self.base_url}/price/stock/{symbol}')
+    def get_stock_price(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get current price for a stock"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/price/stock/{symbol}?token={self.token}')
         data = response.json()
         return data['data'] if data['success'] else None
 
-    def get_all_crypto_prices(self):
-        response = requests.get(f'{self.base_url}/prices/crypto')
+    def get_all_crypto_prices(self) -> List[Dict[str, Any]]:
+        """Get all cryptocurrency prices"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/prices/crypto?token={self.token}')
         data = response.json()
         return data['data'] if data['success'] else []
 
-    def force_update(self, asset_type='all'):
-        response = requests.post(f'{self.base_url}/update/{asset_type}')
+    def get_all_stock_prices(self) -> List[Dict[str, Any]]:
+        """Get all stock prices"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/prices/stock?token={self.token}')
+        data = response.json()
+        return data['data'] if data['success'] else []
+
+    def get_symbols(self, asset_type: Optional[str] = None) -> Optional[Dict[str, List[str]]]:
+        """Get available symbols"""
+        self._check_auth()
+        url = f'{self.base_url}/symbols?token={self.token}'
+        if asset_type:
+            url += f'&asset_type={asset_type}'
+        response = requests.get(url)
+        data = response.json()
+        return data['data'] if data['success'] else None
+
+    def force_update(self, asset_type: str = 'all') -> bool:
+        """Force immediate price update"""
+        self._check_auth()
+        response = requests.post(f'{self.base_url}/update/{asset_type}?token={self.token}')
         data = response.json()
         return data['success']
 
-# Usage
-oracle = KanariOracle()
-btc_price = oracle.get_crypto_price('bitcoin')
-print(f"BTC Price: ${btc_price['price']}")
+    def get_stats(self) -> Optional[Dict[str, Any]]:
+        """Get oracle statistics"""
+        self._check_auth()
+        response = requests.get(f'{self.base_url}/stats?token={self.token}')
+        data = response.json()
+        return data['data'] if data['success'] else None
+
+# Usage Example
+def main():
+    oracle = KanariOracle()
+    
+    try:
+        # Register or login
+        auth_data = oracle.register('trader1', 'secure123', 'trader@example.com')
+        print(f"Authenticated. Token expires: {auth_data['expires_at']}")
+        
+        # Get individual prices
+        btc_price = oracle.get_crypto_price('bitcoin')
+        if btc_price:
+            print(f"BTC Price: ${btc_price['price']:,.2f}")
+        
+        # Get all crypto prices
+        all_crypto = oracle.get_all_crypto_prices()
+        print(f"Found {len(all_crypto)} crypto prices")
+        
+        # Get symbols
+        symbols = oracle.get_symbols()
+        if symbols:
+            print(f"Available crypto: {', '.join(symbols['crypto'])}")
+            print(f"Available stocks: {', '.join(symbols['stocks'][:5])}...")  # Show first 5
+        
+        # Get stats
+        stats = oracle.get_stats()
+        if stats:
+            print(f"Total symbols: {stats['total_crypto_symbols']} crypto, {stats['total_stock_symbols']} stocks")
+            
+    except Exception as e:
+        print(f"Error: {e}")
+
+if __name__ == "__main__":
+    main()
 ```
 
-### Rust
+### Rust SDK
 
 ```rust
 use reqwest::Client;
-use serde_json::Value;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub data: Option<T>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TokenResponse {
+    pub token: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PriceData {
+    pub symbol: String,
+    pub price: f64,
+    pub timestamp: String,
+    pub asset_type: String,
+}
 
 pub struct KanariOracle {
     client: Client,
     base_url: String,
+    token: Option<String>,
 }
 
 impl KanariOracle {
@@ -307,77 +644,327 @@ impl KanariOracle {
         Self {
             client: Client::new(),
             base_url: base_url.unwrap_or_else(|| "http://localhost:3000".to_string()),
+            token: None,
         }
     }
 
-    pub async fn get_crypto_price(&self, symbol: &str) -> Result<Value, reqwest::Error> {
-        let url = format!("{}/price/crypto/{}", self.base_url, symbol);
-        let response: Value = self.client.get(&url).send().await?.json().await?;
-        Ok(response)
+    pub async fn register(&mut self, username: &str, password: &str, email: Option<&str>) 
+        -> Result<TokenResponse, Box<dyn std::error::Error>> {
+        let mut payload = serde_json::json!({
+            "username": username,
+            "password": password
+        });
+        
+        if let Some(email) = email {
+            payload["owner_email"] = serde_json::Value::String(email.to_string());
+        }
+
+        let response: ApiResponse<TokenResponse> = self.client
+            .post(&format!("{}/users/register", self.base_url))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if response.success {
+            let token_data = response.data.unwrap();
+            self.token = Some(token_data.token.clone());
+            Ok(token_data)
+        } else {
+            Err(response.error.unwrap_or_else(|| "Registration failed".to_string()).into())
+        }
     }
 
-    pub async fn get_stock_price(&self, symbol: &str) -> Result<Value, reqwest::Error> {
-        let url = format!("{}/price/stock/{}", self.base_url, symbol);
-        let response: Value = self.client.get(&url).send().await?.json().await?;
-        Ok(response)
+    pub async fn login(&mut self, username: &str, password: &str) 
+        -> Result<TokenResponse, Box<dyn std::error::Error>> {
+        let payload = serde_json::json!({
+            "username": username,
+            "password": password
+        });
+
+        let response: ApiResponse<TokenResponse> = self.client
+            .post(&format!("{}/users/login", self.base_url))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if response.success {
+            let token_data = response.data.unwrap();
+            self.token = Some(token_data.token.clone());
+            Ok(token_data)
+        } else {
+            Err(response.error.unwrap_or_else(|| "Login failed".to_string()).into())
+        }
     }
 
-    pub async fn force_update(&self, asset_type: &str) -> Result<Value, reqwest::Error> {
-        let url = format!("{}/update/{}", self.base_url, asset_type);
-        let response: Value = self.client.post(&url).send().await?.json().await?;
-        Ok(response)
+    fn check_auth(&self) -> Result<&str, Box<dyn std::error::Error>> {
+        self.token.as_ref()
+            .ok_or_else(|| "Not authenticated. Call login() or register() first.".into())
     }
+
+    pub async fn get_crypto_price(&self, symbol: &str) -> Result<Option<PriceData>, Box<dyn std::error::Error>> {
+        let token = self.check_auth()?;
+        let url = format!("{}/price/crypto/{}?token={}", self.base_url, symbol, token);
+        
+        let response: ApiResponse<PriceData> = self.client
+            .get(&url)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(response.data)
+    }
+
+    pub async fn get_stock_price(&self, symbol: &str) -> Result<Option<PriceData>, Box<dyn std::error::Error>> {
+        let token = self.check_auth()?;
+        let url = format!("{}/price/stock/{}?token={}", self.base_url, symbol, token);
+        
+        let response: ApiResponse<PriceData> = self.client
+            .get(&url)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(response.data)
+    }
+
+    pub async fn force_update(&self, asset_type: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        let token = self.check_auth()?;
+        let url = format!("{}/update/{}?token={}", self.base_url, asset_type, token);
+        
+        let response: ApiResponse<String> = self.client
+            .post(&url)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(response.success)
+    }
+}
+
+// Usage example
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut oracle = KanariOracle::new(None);
+    
+    // Register or login
+    let auth_data = oracle.register("trader1", "secure123", Some("trader@example.com")).await?;
+    println!("Authenticated. Token expires: {}", auth_data.expires_at);
+    
+    // Get Bitcoin price
+    if let Some(btc_price) = oracle.get_crypto_price("bitcoin").await? {
+        println!("BTC Price: ${:.2}", btc_price.price);
+    }
+    
+    // Force update
+    let updated = oracle.force_update("crypto").await?;
+    println!("Update successful: {}", updated);
+    
+    Ok(())
 }
 ```
 
-## Error Responses
+## Error Handling
 
-When an error occurs, the API returns:
+### Error Response Format
+
+When an error occurs, the API returns a standardized error response:
 
 ```json
 {
   "success": false,
   "data": null,
-  "error": "Error description here"
+  "error": "Detailed error description here"
 }
 ```
 
-Common error status codes:
+### Common Error Types
 
-- `200 OK`: Success (check `success` field in response)
-- `500 Internal Server Error`: Server error
+**Authentication Errors:**
+- `"Missing token query parameter"` - Token not provided
+- `"Invalid or expired token"` - Token is invalid or has expired
+- `"Invalid username or password"` - Login credentials incorrect
+
+**Validation Errors:**
+- `"Invalid asset type. Use 'crypto' or 'stock'"` - Wrong asset type specified
+- `"Symbol 'XYZ' not configured for crypto"` - Symbol not available
+
+**Database Errors:**
+- `"error returned from database: relation \"users\" does not exist"` - Database not initialized
+- `"error returned from database: password authentication failed"` - Database connection issues
+
+**Rate Limiting:**
+- Price fetching may fail if external APIs are rate limited; the system uses fallback APIs automatically
+
+### HTTP Status Codes
+
+- **200 OK**: Request processed (check `success` field in response body)
+- **500 Internal Server Error**: Unexpected server error
 
 ## Configuration
 
-The API server uses the same configuration file as the CLI tool. You can specify API keys for better rate limits:
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+DATABASE_URL="postgresql://username:password@localhost:5432/kanari_db"
+```
+
+### API Configuration File
+
+The API server uses the same configuration file as the CLI tool for external API keys:
 
 ```json
 {
   "crypto": {
     "coingecko_api_key": "your_coingecko_api_key",
-    "binance_api_key": "your_binance_api_key",
-    "binance_secret_key": "your_binance_secret_key"
+    "binance_api_key": "your_binance_api_key", 
+    "binance_secret_key": "your_binance_secret_key",
+    "symbols": ["bitcoin", "ethereum", "binancecoin", "ripple"]
   },
   "stocks": {
     "alpha_vantage_api_key": "your_alpha_vantage_key",
-    "finnhub_api_key": "your_finnhub_key"
+    "finnhub_api_key": "your_finnhub_key",
+    "symbols": ["AAPL", "GOOGL", "MSFT", "TSLA"]
+  },
+  "general": {
+    "request_timeout": 30,
+    "max_retries": 3,
+    "retry_delay": 1000,
+    "enable_logging": true
   }
 }
 ```
 
-## CORS Support
+## System Features
 
-The API includes CORS headers to allow cross-origin requests from web browsers.
+### Security
 
-## Rate Limiting
+- **Password Hashing**: Uses Argon2id for secure password storage
+- **Token Management**: JWT-like tokens with expiration (30 days)
+- **Database Security**: PostgreSQL with prepared statements (SQL injection protection)
+- **CORS Support**: Configurable cross-origin resource sharing
 
-The Oracle respects upstream API rate limits:
+### Performance & Reliability
 
-- **CoinGecko**: Without API key: 10-50 calls/minute, With API key: higher limits
+- **Background Updates**: Automatic price updates every 30 seconds
+- **Connection Pooling**: Database connection pooling with configurable limits
+- **Fallback APIs**: Multiple data sources with automatic fallback
+- **Caching**: In-memory price caching for fast response times
+- **Concurrent Updates**: Async/await architecture for high performance
+
+### Rate Limiting
+
+The Oracle respects upstream API rate limits and implements fallback mechanisms:
+
+**Cryptocurrency APIs:**
+- **CoinGecko**: 10-50 calls/minute (free), higher limits with API key
 - **Binance**: 1200 requests per minute
-- **Alpha Vantage**: 5 calls per minute (free tier)
-- **Finnhub**: 60 calls per minute (free tier)
 
-## Background Updates
+**Stock APIs:**
+- **Alpha Vantage**: 5 calls per minute (free tier), 500/minute (premium)
+- **Finnhub**: 60 calls per minute (free tier), higher limits with API key
+- **Yahoo Finance**: Used as fallback (no API key required)
 
-When running the API server, price data is automatically updated in the background at the specified interval (default: 30 seconds).
+### Database Schema
+
+The API automatically creates these tables on startup:
+
+```sql
+-- Users table
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- API tokens table  
+CREATE TABLE api_tokens (
+    id SERIAL PRIMARY KEY,
+    token VARCHAR(255) UNIQUE NOT NULL,
+    owner VARCHAR(255) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    FOREIGN KEY (owner) REFERENCES users(username) ON DELETE CASCADE
+);
+```
+
+## Deployment
+
+### Production Setup
+
+1. **Database**: Set up PostgreSQL with proper credentials
+2. **Environment**: Configure `.env` with production database URL
+3. **API Keys**: Add external API keys to `config.json` for better rate limits
+4. **Monitoring**: Enable logging and monitor error rates
+5. **Security**: Use HTTPS, secure database access, and rotate tokens regularly
+
+### Docker Deployment
+
+```dockerfile
+FROM rust:1.70 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/kanari /usr/local/bin/
+CMD ["kanari", "server"]
+```
+
+### Health Monitoring
+
+Monitor the `/health` endpoint for service availability:
+
+```bash
+# Check if API is responding
+curl -f http://localhost:3000/health || echo "API is down"
+```
+
+## Support & Troubleshooting
+
+### Common Issues
+
+1. **Database Connection Failed**
+   - Verify PostgreSQL is running
+   - Check DATABASE_URL in `.env` file
+   - Ensure database user has proper permissions
+
+2. **Token Expired**
+   - Tokens expire after 30 days
+   - Login again to get a new token
+   - Implement token refresh in your client
+
+3. **Rate Limiting**
+   - Add API keys to `config.json` for higher limits
+   - Implement exponential backoff in your client
+   - Monitor external API status pages
+
+4. **Price Data Missing**
+   - Check if symbols are configured in `config.json`
+   - Verify external API availability
+   - Force update using `/update/all` endpoint
+
+### API Status & Updates
+
+- Price data is updated every 30 seconds automatically
+- Check the `last_update` field in responses for data freshness
+- Use `/health` endpoint to verify service status
+- Monitor logs for API errors and rate limiting issues
+
+For technical support or bug reports, check the project's GitHub repository.

@@ -1,19 +1,38 @@
+use anyhow::anyhow;
+use argon2::{
+    Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+};
 use axum::{
+    Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::Json,
     routing::{get, post},
-    Router,
 };
+use chrono::{Duration, NaiveDateTime, Utc};
+use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use sqlx::Row;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
+use uuid::Uuid;
+use dotenvy;
 
 use kanari_oracle::oracle::Oracle;
 
 pub type SharedOracle = Arc<RwLock<Oracle>>;
+pub type DbPool = PgPool;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub oracle: SharedOracle,
+    pub db: DbPool,
+}
 
 #[derive(Serialize)]
 pub struct ApiResponse<T> {
@@ -65,8 +84,6 @@ pub struct StatsResponse {
     pub uptime_seconds: i64,
 }
 
-
-
 #[derive(Deserialize)]
 pub struct ListQuery {
     pub asset_type: Option<String>,
@@ -79,31 +96,49 @@ pub struct SymbolsResponse {
 }
 
 // Health check endpoint
-pub async fn health_check(State(oracle): State<SharedOracle>) -> Json<ApiResponse<HealthResponse>> {
-    let oracle_lock = oracle.read().await;
-    
+pub async fn health_check(State(state): State<AppState>) -> Json<ApiResponse<HealthResponse>> {
+    let oracle_lock = state.oracle.read().await;
+
     let response = HealthResponse {
         status: "healthy".to_string(),
         last_update: oracle_lock.get_last_update().to_rfc3339(),
-        total_symbols: oracle_lock.get_crypto_symbols().len() + oracle_lock.get_stock_symbols().len(),
+        total_symbols: oracle_lock.get_crypto_symbols().len()
+            + oracle_lock.get_stock_symbols().len(),
     };
-    
+
     Json(ApiResponse::success(response))
 }
 
 // Get price for a specific symbol
 pub async fn get_price(
     Path((asset_type, symbol)): Path<(String, String)>,
-    State(oracle): State<SharedOracle>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<PriceResponse>>, StatusCode> {
-    let oracle_lock = oracle.read().await;
-    
+    // Validate token
+    if let Some(token) = query.get("token") {
+        if !validate_token(&state.db, token).await {
+            return Ok(Json(ApiResponse::error(
+                "Invalid or expired token".to_string(),
+            )));
+        }
+    } else {
+        return Ok(Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        )));
+    }
+    let oracle_lock = state.oracle.read().await;
+
     let result = match asset_type.as_str() {
         "crypto" => oracle_lock.get_crypto_price(&symbol).await,
         "stock" => oracle_lock.get_stock_price(&symbol).await,
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto' or 'stock'".to_string()))),
+        _ => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid asset type. Use 'crypto' or 'stock'".to_string(),
+            )));
+        }
     };
-    
+
     match result {
         Ok(price_data) => {
             let response = PriceResponse {
@@ -121,18 +156,34 @@ pub async fn get_price(
 // Get all prices for an asset type
 pub async fn get_all_prices(
     Path(asset_type): Path<String>,
-    State(oracle): State<SharedOracle>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<PriceResponse>>>, StatusCode> {
-    let oracle_lock = oracle.read().await;
-    
+    if let Some(token) = query.get("token") {
+        if !validate_token(&state.db, token).await {
+            return Ok(Json(ApiResponse::error(
+                "Invalid or expired token".to_string(),
+            )));
+        }
+    } else {
+        return Ok(Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        )));
+    }
+    let oracle_lock = state.oracle.read().await;
+
     let prices = match asset_type.as_str() {
         "crypto" => oracle_lock.get_all_crypto_prices_map(),
         "stock" => oracle_lock.get_all_stock_prices_map(),
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto' or 'stock'".to_string()))),
+        _ => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid asset type. Use 'crypto' or 'stock'".to_string(),
+            )));
+        }
     };
-    
+
     log::info!("API: Found {} {} prices", prices.len(), asset_type);
-    
+
     let response: Vec<PriceResponse> = prices
         .iter()
         .map(|(symbol, price_data)| PriceResponse {
@@ -142,20 +193,31 @@ pub async fn get_all_prices(
             asset_type: asset_type.clone(),
         })
         .collect();
-    
+
     Ok(Json(ApiResponse::success(response)))
 }
 
 // List available symbols
 pub async fn list_symbols(
     Query(params): Query<ListQuery>,
-    State(oracle): State<SharedOracle>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
 ) -> Json<ApiResponse<SymbolsResponse>> {
-    let oracle_lock = oracle.read().await;
-    
+    if let Some(token) = query.get("token") {
+        // Allow list without token? enforce token
+        if !validate_token(&state.db, token).await {
+            return Json(ApiResponse::error("Invalid or expired token".to_string()));
+        }
+    } else {
+        return Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        ));
+    }
+    let oracle_lock = state.oracle.read().await;
+
     let crypto_symbols = oracle_lock.get_crypto_symbols();
     let stock_symbols = oracle_lock.get_stock_symbols();
-    
+
     let response = match params.asset_type.as_deref() {
         Some("crypto") => SymbolsResponse {
             crypto: crypto_symbols,
@@ -170,86 +232,334 @@ pub async fn list_symbols(
             stocks: stock_symbols,
         },
     };
-    
+
     Json(ApiResponse::success(response))
 }
 
 // Get oracle statistics
-pub async fn get_stats(State(oracle): State<SharedOracle>) -> Json<ApiResponse<StatsResponse>> {
-    let oracle_lock = oracle.read().await;
+pub async fn get_stats(
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
+) -> Json<ApiResponse<StatsResponse>> {
+    if let Some(token) = query.get("token") {
+        if !validate_token(&state.db, token).await {
+            return Json(ApiResponse::error("Invalid or expired token".to_string()));
+        }
+    } else {
+        return Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        ));
+    }
+    let oracle_lock = state.oracle.read().await;
     let stats = oracle_lock.get_price_statistics();
-    
+
     let response = StatsResponse {
-        total_crypto_symbols: stats.get("total_crypto_symbols")
+        total_crypto_symbols: stats
+            .get("total_crypto_symbols")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize,
-        total_stock_symbols: stats.get("total_stock_symbols")
+        total_stock_symbols: stats
+            .get("total_stock_symbols")
             .and_then(|v| v.as_u64())
             .unwrap_or(0) as usize,
         last_update: oracle_lock.get_last_update().to_rfc3339(),
-        avg_crypto_price: stats.get("avg_crypto_price")
+        avg_crypto_price: stats
+            .get("avg_crypto_price")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0),
-        avg_stock_price: stats.get("avg_stock_price")
+        avg_stock_price: stats
+            .get("avg_stock_price")
             .and_then(|v| v.as_f64())
             .unwrap_or(0.0),
         uptime_seconds: 0, // TODO: Implement uptime tracking
     };
-    
+
     Json(ApiResponse::success(response))
 }
 
 // Force update prices
 pub async fn update_prices(
     Path(asset_type): Path<String>,
-    State(oracle): State<SharedOracle>,
+    Query(query): Query<std::collections::HashMap<String, String>>,
+    State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<String>>, StatusCode> {
-    let mut oracle_lock = oracle.write().await;
-    
+    if let Some(token) = query.get("token") {
+        if !validate_token(&state.db, token).await {
+            return Ok(Json(ApiResponse::error(
+                "Invalid or expired token".to_string(),
+            )));
+        }
+    } else {
+        return Ok(Json(ApiResponse::error(
+            "Missing token query parameter".to_string(),
+        )));
+    }
+    let mut oracle_lock = state.oracle.write().await;
+
     let result = match asset_type.as_str() {
         "crypto" => oracle_lock.update_crypto_prices().await,
         "stock" => oracle_lock.update_stock_prices().await,
         "all" => oracle_lock.update_all_prices().await,
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto', 'stock', or 'all'".to_string()))),
+        _ => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid asset type. Use 'crypto', 'stock', or 'all'".to_string(),
+            )));
+        }
     };
-    
+
     match result {
-        Ok(count) => Ok(Json(ApiResponse::success(format!("Updated {} price feeds", count)))),
+        Ok(count) => Ok(Json(ApiResponse::success(format!(
+            "Updated {} price feeds",
+            count
+        )))),
         Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
     }
 }
 
-pub fn create_router(oracle: SharedOracle) -> Router {
+pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
+    let state = AppState { oracle, db };
     Router::new()
         // Health check
         .route("/health", get(health_check))
-        
         // Price endpoints
         .route("/price/{asset_type}/{symbol}", get(get_price))
         .route("/prices/{asset_type}", get(get_all_prices))
-        
         // Symbols
         .route("/symbols", get(list_symbols))
-        
         // Statistics
         .route("/stats", get(get_stats))
-        
         // Update endpoints
         .route("/update/{asset_type}", post(update_prices))
-        
+        // User endpoints
+        .route("/users/register", post(register_user))
+        .route("/users/login", post(login_user))
         // Add state
-        .with_state(oracle)
-        
+        .with_state(state)
         // Add middleware
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
 }
 
-pub async fn start_api_server_with_shared_oracle(shared_oracle: SharedOracle, port: u16) -> anyhow::Result<()> {
-    let app = create_router(shared_oracle);
-    
+#[derive(Deserialize)]
+pub struct RegisterRequest {
+    pub username: String,
+    pub password: String,
+    pub owner_email: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenResponse {
+    pub token: String,
+    pub expires_at: String,
+}
+
+// Register a new user and return an API token
+pub async fn register_user(
+    State(state): State<AppState>,
+    Json(payload): Json<RegisterRequest>,
+) -> Result<Json<ApiResponse<TokenResponse>>, StatusCode> {
+    // hash password using Argon2id with default params
+    let argon2 = Argon2::default();
+    let mut rng = OsRng;
+    let salt = SaltString::generate(&mut rng);
+    let hashed = match argon2.hash_password(payload.password.as_bytes(), &salt) {
+        Ok(ph) => ph.to_string(),
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // insert user
+    let res = sqlx::query("INSERT INTO users (username, password_hash, email) VALUES ($1, $2, $3)")
+        .bind(&payload.username)
+        .bind(&hashed)
+        .bind(payload.owner_email.as_deref())
+        .execute(&state.db)
+        .await;
+
+    if let Err(e) = res {
+        return Ok(Json(ApiResponse::error(e.to_string())));
+    }
+
+    // create token
+    match create_monthly_token(&state.db, &payload.username).await {
+        Ok(token) => {
+            // fetch expiry
+            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+                .bind(&token)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires_naive: NaiveDateTime = row
+                .try_get("expires_at")
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            Ok(Json(ApiResponse::success(TokenResponse {
+                token,
+                expires_at: expires.to_rfc3339(),
+            })))
+        }
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
+}
+
+// Login: validate credentials and return existing/new token
+pub async fn login_user(
+    State(state): State<AppState>,
+    Json(payload): Json<LoginRequest>,
+) -> Result<Json<ApiResponse<TokenResponse>>, StatusCode> {
+    let row = sqlx::query("SELECT password_hash FROM users WHERE username = $1")
+        .bind(&payload.username)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let hash_val: String = match row {
+        Some(r) => r
+            .try_get("password_hash")
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        None => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid username or password".to_string(),
+            )));
+        }
+    };
+
+    // verify Argon2 password
+    let parsed_hash =
+        PasswordHash::new(&hash_val).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if Argon2::default()
+        .verify_password(payload.password.as_bytes(), &parsed_hash)
+        .is_err()
+    {
+        return Ok(Json(ApiResponse::error(
+            "Invalid username or password".to_string(),
+        )));
+    }
+
+    // Create and return a new token
+    match create_monthly_token(&state.db, &payload.username).await {
+        Ok(token) => {
+            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+                .bind(&token)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires_naive: NaiveDateTime = row
+                .try_get("expires_at")
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            Ok(Json(ApiResponse::success(TokenResponse {
+                token,
+                expires_at: expires.to_rfc3339(),
+            })))
+        }
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
+}
+
+// (old non-DB start_api_server_with_shared_oracle removed)
+
+// Validate a token exists and is not expired
+async fn validate_token(db: &DbPool, token: &str) -> bool {
+    match sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(db)
+        .await
+    {
+        Ok(Some(row)) => {
+            let expires_naive: Result<NaiveDateTime, _> = row.try_get("expires_at");
+            match expires_naive {
+                Ok(exp_naive) => {
+                    let exp = chrono::DateTime::<Utc>::from_naive_utc_and_offset(exp_naive, Utc);
+                    exp > Utc::now()
+                }
+                Err(_) => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+// Create a monthly token for an owner (simple helper)
+pub async fn create_monthly_token(db: &DbPool, owner: &str) -> anyhow::Result<String> {
+    let token = Uuid::new_v4().to_string();
+    let expires = Utc::now() + Duration::days(30);
+
+    sqlx::query("INSERT INTO api_tokens (token, owner, expires_at) VALUES ($1, $2, $3)")
+        .bind(&token)
+        .bind(owner)
+        .bind(expires.naive_utc())
+        .execute(db)
+        .await
+        .map_err(|e| anyhow!(e.to_string()))?;
+
+    Ok(token)
+}
+
+// Initialize database tables if they don't exist
+async fn initialize_database(pool: &DbPool) -> anyhow::Result<()> {
+    // Create users table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            email VARCHAR(255),
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create api_tokens table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS api_tokens (
+            id SERIAL PRIMARY KEY,
+            token VARCHAR(255) UNIQUE NOT NULL,
+            owner VARCHAR(255) NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+            FOREIGN KEY (owner) REFERENCES users(username) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    log::info!("Database tables created/verified: users, api_tokens");
+    Ok(())
+}
+
+pub async fn start_api_server_with_shared_oracle(
+    shared_oracle: SharedOracle,
+    port: u16,
+) -> anyhow::Result<()> {
+    // Load .env file (if present) so DATABASE_URL and other env vars are available
+    dotenvy::dotenv().ok();
+    // Build DB pool from DATABASE_URL env var
+    let database_url =
+        std::env::var("DATABASE_URL").map_err(|_| anyhow!("DATABASE_URL must be set"))?;
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await?;
+
+    // Initialize database tables
+    initialize_database(&pool).await?;
+    log::info!("Database tables initialized successfully");
+
+    let app = create_router(shared_oracle, pool);
+
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    
+
     log::info!("🚀 API server starting on http://0.0.0.0:{}", port);
     log::info!("📚 API Documentation:");
     log::info!("  GET  /health                     - Health check");
@@ -258,8 +568,8 @@ pub async fn start_api_server_with_shared_oracle(shared_oracle: SharedOracle, po
     log::info!("  GET  /symbols?asset_type=type    - List available symbols");
     log::info!("  GET  /stats                      - Oracle statistics");
     log::info!("  POST /update/:type               - Force update prices (crypto, stock, all)");
-    
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }
