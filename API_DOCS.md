@@ -194,6 +194,51 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
 }
 ```
 
+### Change Password
+
+**POST** `/users/change-password?token={your_token}`
+
+Change the current user's password. Requires current password confirmation.
+
+**Parameters:**
+- `token`: Your API token (query parameter)
+
+**Request Body:**
+```json
+{
+  "current_password": "current_password",
+  "new_password": "new_secure_password"
+}
+```
+
+**Example:**
+```bash
+curl -X POST "http://localhost:3000/users/change-password?token=YOUR_TOKEN_HERE" \
+  -H "Content-Type: application/json" \
+  -d '{"current_password":"old_password","new_password":"new_secure_password"}'
+```
+
+**PowerShell Example:**
+```powershell
+$body = @{ current_password="old_password"; new_password="new_secure_password" } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:3000/users/change-password?token=YOUR_TOKEN_HERE" -Method Post -Body $body -ContentType "application/json"
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": "Password changed successfully",
+  "error": null
+}
+```
+
+**Security Notes:**
+- Requires current password verification
+- New password is hashed using Argon2id
+- All existing tokens remain valid after password change
+- Use strong passwords for better security
+
 ### Delete User Account
 
 **POST** `/users/delete?token={your_token}`
@@ -580,6 +625,20 @@ class KanariOracle {
     return data.success ? data.data : null;
   }
 
+  async changePassword(currentPassword, newPassword) {
+    if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
+    const response = await fetch(`${this.baseUrl}/users/change-password?token=${this.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        current_password: currentPassword, 
+        new_password: newPassword 
+      })
+    });
+    const data = await response.json();
+    return data.success ? data.data : null;
+  }
+
   async deleteAccount(password) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
     const response = await fetch(`${this.baseUrl}/users/delete?token=${this.token}`, {
@@ -736,6 +795,20 @@ class KanariOracle:
         response = requests.get(f'{self.base_url}/users/list?token={self.token}')
         data = response.json()
         return data['data'] if data['success'] else None
+
+    def change_password(self, current_password: str, new_password: str) -> bool:
+        """Change current user's password"""
+        self._check_auth()
+        response = requests.post(
+            f'{self.base_url}/users/change-password?token={self.token}',
+            json={
+                "current_password": current_password,
+                "new_password": new_password
+            },
+            headers={'Content-Type': 'application/json'}
+        )
+        data = response.json()
+        return data['success']
 
     def delete_account(self, password: str) -> bool:
         """Delete current user account permanently"""
@@ -914,6 +987,32 @@ impl KanariOracle {
             .await?;
 
         Ok(response.data)
+    }
+
+    pub async fn change_password(&self, current_password: &str, new_password: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        let token = self.check_auth()?;
+        let url = format!("{}/users/change-password?token={}", self.base_url, token);
+        
+        #[derive(Serialize)]
+        struct ChangePasswordPayload<'a> {
+            current_password: &'a str,
+            new_password: &'a str,
+        }
+
+        let payload = ChangePasswordPayload {
+            current_password,
+            new_password,
+        };
+
+        let response: ApiResponse<String> = self.client
+            .post(&url)
+            .json(&payload)
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        Ok(response.success)
     }
 
     pub async fn force_update(&self, asset_type: &str) -> Result<bool, Box<dyn std::error::Error>> {

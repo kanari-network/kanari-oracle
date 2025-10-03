@@ -14,8 +14,8 @@ use std::collections::HashMap;
 use crate::api::AppState;
 use crate::auth::{create_monthly_token, validate_token};
 use crate::models::{
-    ApiResponse, DeleteAccountRequest, LoginRequest, RegisterRequest, TokenResponse,
-    UserListResponse, UserProfile,
+    ApiResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, RegisterRequest, 
+    TokenResponse, UserListResponse, UserProfile,
 };
 
 // Register a new user and return an API token
@@ -319,6 +319,105 @@ pub async fn delete_user_account(
     {
         Ok(_) => Ok(Json(ApiResponse::success(
             "Account deleted successfully".to_string(),
+        ))),
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
+}
+
+// Change user password (requires current password confirmation)
+pub async fn change_user_password(
+    Query(query): Query<HashMap<String, String>>,
+    State(state): State<AppState>,
+    Json(payload): Json<ChangePasswordRequest>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
+    let token = match query.get("token") {
+        Some(t) => t,
+        None => {
+            return Ok(Json(ApiResponse::error(
+                "Missing token query parameter".to_string(),
+            )));
+        }
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error(
+            "Invalid or expired token".to_string(),
+        )));
+    }
+
+    // Get username from token
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error("Token not found".to_string())));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let username: String = match owner_row.try_get("owner") {
+        Ok(u) => u,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Verify current password
+    let user_row = match sqlx::query("SELECT password_hash FROM users WHERE username = $1")
+        .bind(&username)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(row)) => row,
+        Ok(None) => {
+            return Ok(Json(ApiResponse::error("User not found".to_string())));
+        }
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let current_hash_val: String = match user_row.try_get("password_hash") {
+        Ok(h) => h,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Verify current password
+    let parsed_current_hash = match PasswordHash::new(&current_hash_val) {
+        Ok(h) => h,
+        Err(_) => {
+            return Ok(Json(ApiResponse::error(
+                "Invalid current password hash".to_string(),
+            )));
+        }
+    };
+
+    if Argon2::default()
+        .verify_password(payload.current_password.as_bytes(), &parsed_current_hash)
+        .is_err()
+    {
+        return Ok(Json(ApiResponse::error(
+            "Current password is incorrect".to_string(),
+        )));
+    }
+
+    // Hash new password using Argon2id with default params
+    let argon2 = Argon2::default();
+    let mut rng = OsRng;
+    let salt = SaltString::generate(&mut rng);
+    let new_hashed = match argon2.hash_password(payload.new_password.as_bytes(), &salt) {
+        Ok(ph) => ph.to_string(),
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    // Update password in database
+    match sqlx::query("UPDATE users SET password_hash = $1 WHERE username = $2")
+        .bind(&new_hashed)
+        .bind(&username)
+        .execute(&state.db)
+        .await
+    {
+        Ok(_) => Ok(Json(ApiResponse::success(
+            "Password changed successfully".to_string(),
         ))),
         Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
     }

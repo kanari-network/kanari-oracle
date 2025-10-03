@@ -12,8 +12,9 @@ use kanari_oracle::oracle::Oracle;
 
 use crate::database::{DbPool, create_db_pool, initialize_database};
 use crate::handlers::{
-    delete_user_account, get_all_prices, get_price, get_stats, get_user_profile, health_check,
-    list_symbols, list_users, login_user, register_user, update_prices,
+    change_user_password, delete_user_account, get_all_prices, get_price, get_stats, 
+    get_user_profile, health_check, list_symbols, list_users, login_user, register_user, 
+    update_prices,
 };
 
 pub type SharedOracle = Arc<RwLock<Oracle>>;
@@ -43,6 +44,7 @@ pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
         .route("/users/login", post(login_user))
         .route("/users/list", get(list_users))
         .route("/users/profile", get(get_user_profile))
+        .route("/users/change-password", post(change_user_password))
         .route("/users/delete", post(delete_user_account))
         // Add state
         .with_state(state)

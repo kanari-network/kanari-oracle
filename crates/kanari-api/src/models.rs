@@ -98,3 +98,9 @@ pub struct UserListResponse {
 pub struct DeleteAccountRequest {
     pub password: String,
 }
+
+#[derive(Deserialize)]
+pub struct ChangePasswordRequest {
+    pub current_password: String,
+    pub new_password: String,
+}
