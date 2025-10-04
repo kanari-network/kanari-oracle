@@ -1,11 +1,8 @@
 use axum::{
-    extract::{Path, Query, State},
-    http::StatusCode,
-    response::Json,
-    routing::{get, post},
     Router,
+    routing::{get, post},
 };
-use serde::{Deserialize, Serialize};
+use dotenvy;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
@@ -13,243 +10,73 @@ use tower_http::trace::TraceLayer;
 
 use kanari_oracle::oracle::Oracle;
 
+use crate::database::{DbPool, create_db_pool, initialize_database};
+use crate::handlers::{
+    change_user_password, create_user_token, delete_user_account, delete_user_token,
+    get_all_prices, get_price, get_stats, get_user_profile, health_check, list_symbols,
+    list_user_tokens, list_users, login_user, register_user, update_prices,
+};
+
 pub type SharedOracle = Arc<RwLock<Oracle>>;
 
-#[derive(Serialize)]
-pub struct ApiResponse<T> {
-    pub success: bool,
-    pub data: Option<T>,
-    pub error: Option<String>,
+#[derive(Clone)]
+pub struct AppState {
+    pub oracle: SharedOracle,
+    pub db: DbPool,
 }
 
-impl<T> ApiResponse<T> {
-    pub fn success(data: T) -> Self {
-        Self {
-            success: true,
-            data: Some(data),
-            error: None,
-        }
-    }
-
-    pub fn error(message: String) -> Self {
-        Self {
-            success: false,
-            data: None,
-            error: Some(message),
-        }
-    }
-}
-
-#[derive(Serialize)]
-pub struct PriceResponse {
-    pub symbol: String,
-    pub price: f64,
-    pub timestamp: String,
-    pub asset_type: String,
-}
-
-#[derive(Serialize)]
-pub struct HealthResponse {
-    pub status: String,
-    pub last_update: String,
-    pub total_symbols: usize,
-}
-
-#[derive(Serialize)]
-pub struct StatsResponse {
-    pub total_crypto_symbols: usize,
-    pub total_stock_symbols: usize,
-    pub last_update: String,
-    pub avg_crypto_price: f64,
-    pub avg_stock_price: f64,
-    pub uptime_seconds: i64,
-}
-
-
-
-#[derive(Deserialize)]
-pub struct ListQuery {
-    pub asset_type: Option<String>,
-}
-
-#[derive(Serialize)]
-pub struct SymbolsResponse {
-    pub crypto: Vec<String>,
-    pub stocks: Vec<String>,
-}
-
-// Health check endpoint
-pub async fn health_check(State(oracle): State<SharedOracle>) -> Json<ApiResponse<HealthResponse>> {
-    let oracle_lock = oracle.read().await;
-    
-    let response = HealthResponse {
-        status: "healthy".to_string(),
-        last_update: oracle_lock.get_last_update().to_rfc3339(),
-        total_symbols: oracle_lock.get_crypto_symbols().len() + oracle_lock.get_stock_symbols().len(),
-    };
-    
-    Json(ApiResponse::success(response))
-}
-
-// Get price for a specific symbol
-pub async fn get_price(
-    Path((asset_type, symbol)): Path<(String, String)>,
-    State(oracle): State<SharedOracle>,
-) -> Result<Json<ApiResponse<PriceResponse>>, StatusCode> {
-    let oracle_lock = oracle.read().await;
-    
-    let result = match asset_type.as_str() {
-        "crypto" => oracle_lock.get_crypto_price(&symbol).await,
-        "stock" => oracle_lock.get_stock_price(&symbol).await,
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto' or 'stock'".to_string()))),
-    };
-    
-    match result {
-        Ok(price_data) => {
-            let response = PriceResponse {
-                symbol: symbol.to_uppercase(),
-                price: price_data.price,
-                timestamp: price_data.timestamp.to_rfc3339(),
-                asset_type: asset_type.clone(),
-            };
-            Ok(Json(ApiResponse::success(response)))
-        }
-        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
-    }
-}
-
-// Get all prices for an asset type
-pub async fn get_all_prices(
-    Path(asset_type): Path<String>,
-    State(oracle): State<SharedOracle>,
-) -> Result<Json<ApiResponse<Vec<PriceResponse>>>, StatusCode> {
-    let oracle_lock = oracle.read().await;
-    
-    let prices = match asset_type.as_str() {
-        "crypto" => oracle_lock.get_all_crypto_prices_map(),
-        "stock" => oracle_lock.get_all_stock_prices_map(),
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto' or 'stock'".to_string()))),
-    };
-    
-    log::info!("API: Found {} {} prices", prices.len(), asset_type);
-    
-    let response: Vec<PriceResponse> = prices
-        .iter()
-        .map(|(symbol, price_data)| PriceResponse {
-            symbol: symbol.clone(),
-            price: price_data.price,
-            timestamp: price_data.timestamp.to_rfc3339(),
-            asset_type: asset_type.clone(),
-        })
-        .collect();
-    
-    Ok(Json(ApiResponse::success(response)))
-}
-
-// List available symbols
-pub async fn list_symbols(
-    Query(params): Query<ListQuery>,
-    State(oracle): State<SharedOracle>,
-) -> Json<ApiResponse<SymbolsResponse>> {
-    let oracle_lock = oracle.read().await;
-    
-    let crypto_symbols = oracle_lock.get_crypto_symbols();
-    let stock_symbols = oracle_lock.get_stock_symbols();
-    
-    let response = match params.asset_type.as_deref() {
-        Some("crypto") => SymbolsResponse {
-            crypto: crypto_symbols,
-            stocks: vec![],
-        },
-        Some("stock") => SymbolsResponse {
-            crypto: vec![],
-            stocks: stock_symbols,
-        },
-        _ => SymbolsResponse {
-            crypto: crypto_symbols,
-            stocks: stock_symbols,
-        },
-    };
-    
-    Json(ApiResponse::success(response))
-}
-
-// Get oracle statistics
-pub async fn get_stats(State(oracle): State<SharedOracle>) -> Json<ApiResponse<StatsResponse>> {
-    let oracle_lock = oracle.read().await;
-    let stats = oracle_lock.get_price_statistics();
-    
-    let response = StatsResponse {
-        total_crypto_symbols: stats.get("total_crypto_symbols")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize,
-        total_stock_symbols: stats.get("total_stock_symbols")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize,
-        last_update: oracle_lock.get_last_update().to_rfc3339(),
-        avg_crypto_price: stats.get("avg_crypto_price")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0),
-        avg_stock_price: stats.get("avg_stock_price")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0),
-        uptime_seconds: 0, // TODO: Implement uptime tracking
-    };
-    
-    Json(ApiResponse::success(response))
-}
-
-// Force update prices
-pub async fn update_prices(
-    Path(asset_type): Path<String>,
-    State(oracle): State<SharedOracle>,
-) -> Result<Json<ApiResponse<String>>, StatusCode> {
-    let mut oracle_lock = oracle.write().await;
-    
-    let result = match asset_type.as_str() {
-        "crypto" => oracle_lock.update_crypto_prices().await,
-        "stock" => oracle_lock.update_stock_prices().await,
-        "all" => oracle_lock.update_all_prices().await,
-        _ => return Ok(Json(ApiResponse::error("Invalid asset type. Use 'crypto', 'stock', or 'all'".to_string()))),
-    };
-    
-    match result {
-        Ok(count) => Ok(Json(ApiResponse::success(format!("Updated {} price feeds", count)))),
-        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
-    }
-}
-
-pub fn create_router(oracle: SharedOracle) -> Router {
+pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
+    let state = AppState { oracle, db };
     Router::new()
         // Health check
         .route("/health", get(health_check))
-        
         // Price endpoints
         .route("/price/{asset_type}/{symbol}", get(get_price))
         .route("/prices/{asset_type}", get(get_all_prices))
-        
         // Symbols
         .route("/symbols", get(list_symbols))
-        
         // Statistics
         .route("/stats", get(get_stats))
-        
         // Update endpoints
         .route("/update/{asset_type}", post(update_prices))
-        
+        // User endpoints
+        .route("/users/register", post(register_user))
+        .route("/users/login", post(login_user))
+        .route("/users/list", get(list_users))
+        // Token management
+        .route(
+            "/users/tokens",
+            get(list_user_tokens).post(create_user_token),
+        )
+        .route("/users/tokens/revoke", post(delete_user_token))
+        .route("/users/profile", get(get_user_profile))
+        .route("/users/change-password", post(change_user_password))
+        .route("/users/delete", post(delete_user_account))
         // Add state
-        .with_state(oracle)
-        
+        .with_state(state)
         // Add middleware
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
 }
 
-pub async fn start_api_server_with_shared_oracle(shared_oracle: SharedOracle, port: u16) -> anyhow::Result<()> {
-    let app = create_router(shared_oracle);
-    
+pub async fn start_api_server_with_shared_oracle(
+    shared_oracle: SharedOracle,
+    port: u16,
+) -> anyhow::Result<()> {
+    // Load .env file (if present) so DATABASE_URL and other env vars are available
+    dotenvy::dotenv().ok();
+
+    // Build DB pool from DATABASE_URL env var
+    let pool = create_db_pool().await?;
+
+    // Initialize database tables
+    initialize_database(&pool).await?;
+    log::info!("Database tables initialized successfully");
+
+    let app = create_router(shared_oracle, pool);
+
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-    
+
     log::info!("🚀 API server starting on http://0.0.0.0:{}", port);
     log::info!("📚 API Documentation:");
     log::info!("  GET  /health                     - Health check");
@@ -258,8 +85,34 @@ pub async fn start_api_server_with_shared_oracle(shared_oracle: SharedOracle, po
     log::info!("  GET  /symbols?asset_type=type    - List available symbols");
     log::info!("  GET  /stats                      - Oracle statistics");
     log::info!("  POST /update/:type               - Force update prices (crypto, stock, all)");
-    
+    log::info!("  POST /users/register             - Register new user (public)");
+    log::info!("  POST /users/login                - User login (public)");
+    log::info!(
+        "  GET  /users/list                 - List all users (admin, requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  GET  /users/profile              - Get user profile (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/change-password      - Change password (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/delete               - Delete user account (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  GET  /users/tokens               - List your API tokens (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/tokens               - Create a new API token (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/tokens/revoke        - Revoke an API token (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  Example (curl): curl -H \"Authorization: Bearer <YOUR_TOKEN_HERE>\" http://localhost:3000/users/profile"
+    );
+
     axum::serve(listener, app).await?;
-    
+
     Ok(())
 }

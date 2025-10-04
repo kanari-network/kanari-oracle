@@ -1,6 +1,6 @@
+use crate::errors::{OracleError, Result};
 use serde::{Deserialize, Serialize};
 use tokio::fs;
-use crate::errors::{OracleError, Result};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -58,10 +58,18 @@ impl Default for GeneralConfig {
     }
 }
 
-fn default_timeout() -> u64 { 30 }
-fn default_max_retries() -> u32 { 3 }
-fn default_retry_delay() -> u64 { 1000 }
-fn default_enable_logging() -> bool { true }
+fn default_timeout() -> u64 {
+    30
+}
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_retry_delay() -> u64 {
+    1000
+}
+fn default_enable_logging() -> bool {
+    true
+}
 
 impl Default for CryptoConfig {
     fn default() -> Self {
@@ -80,69 +88,69 @@ impl Default for Config {
         Self {
             crypto: CryptoConfig {
                 symbols: vec![
-                    "sui".to_string(),        // Sui
-                    "bitcoin".to_string(),    // Bitcoin
-                    "ethereum".to_string(),   // Ethereum
-                    "tether".to_string(),     // Tether
-                    "usd-coin".to_string(),   // USD Coin
+                    "sui".to_string(),         // Sui
+                    "bitcoin".to_string(),     // Bitcoin
+                    "ethereum".to_string(),    // Ethereum
+                    "tether".to_string(),      // Tether
+                    "usd-coin".to_string(),    // USD Coin
                     "binancecoin".to_string(), // Binance Coin
-                    "ripple".to_string(),     // XRP
+                    "ripple".to_string(),      // XRP
                 ],
                 ..Default::default()
             },
             stocks: StockConfig {
                 symbols: vec![
                     // Top US Stocks by Market Cap
-                    "AAPL".to_string(),   // Apple Inc.
-                    "MSFT".to_string(),   // Microsoft Corporation
-                    "GOOGL".to_string(),  // Alphabet Inc. Class A
-                    "AMZN".to_string(),   // Amazon.com Inc.
-                    "NVDA".to_string(),   // NVIDIA Corporation
-                    "TSLA".to_string(),   // Tesla Inc.
-                    "META".to_string(),   // Meta Platforms Inc.
-                    "BRK.B".to_string(),  // Berkshire Hathaway Inc. Class B
-                    "AVGO".to_string(),   // Broadcom Inc.
-                    "JPM".to_string(),    // JPMorgan Chase & Co.
-                    "LLY".to_string(),    // Eli Lilly and Company
-                    "V".to_string(),      // Visa Inc.
-                    "UNH".to_string(),    // UnitedHealth Group Inc.
-                    "XOM".to_string(),    // Exxon Mobil Corporation
-                    "MA".to_string(),     // Mastercard Inc.
-                    "ORCL".to_string(),   // Oracle Corporation
-                    "HD".to_string(),     // The Home Depot Inc.
-                    "PG".to_string(),     // Procter & Gamble Co.
-                    "JNJ".to_string(),    // Johnson & Johnson
-                    "COST".to_string(),   // Costco Wholesale Corporation
-                    "ABBV".to_string(),   // AbbVie Inc.
-                    "NFLX".to_string(),   // Netflix Inc.
-                    "BAC".to_string(),    // Bank of America Corporation
-                    "CRM".to_string(),    // Salesforce Inc.
-                    "KO".to_string(),     // The Coca-Cola Company
-                    "AMD".to_string(),    // Advanced Micro Devices Inc.
-                    "PEP".to_string(),    // PepsiCo Inc.
-                    "TMO".to_string(),    // Thermo Fisher Scientific Inc.
-                    "LIN".to_string(),    // Linde plc
-                    "WMT".to_string(),    // Walmart Inc.
-                    "ABT".to_string(),    // Abbott Laboratories
-                    "CSCO".to_string(),   // Cisco Systems Inc.
-                    "ACN".to_string(),    // Accenture plc
-                    "DIS".to_string(),    // The Walt Disney Company
-                    "MRK".to_string(),    // Merck & Co. Inc.
-                    "VZ".to_string(),     // Verizon Communications Inc.
-                    "ADBE".to_string(),   // Adobe Inc.
-                    "COP".to_string(),    // ConocoPhillips
-                    "INTC".to_string(),   // Intel Corporation
-                    "IBM".to_string(),    // International Business Machines
-                    "TXN".to_string(),    // Texas Instruments Inc.
-                    "GE".to_string(),     // General Electric Company
-                    "QCOM".to_string(),   // QUALCOMM Inc.
-                    "PM".to_string(),     // Philip Morris International
-                    "CAT".to_string(),    // Caterpillar Inc.
-                    "NOW".to_string(),    // ServiceNow Inc.
-                    "CVX".to_string(),    // Chevron Corporation
-                    "GS".to_string(),     // The Goldman Sachs Group Inc.
-                    "INTU".to_string(),   // Intuit Inc.
-                    "SPGI".to_string(),   // S&P Global Inc.
+                    "AAPL".to_string(),  // Apple Inc.
+                    "MSFT".to_string(),  // Microsoft Corporation
+                    "GOOGL".to_string(), // Alphabet Inc. Class A
+                    "AMZN".to_string(),  // Amazon.com Inc.
+                    "NVDA".to_string(),  // NVIDIA Corporation
+                    "TSLA".to_string(),  // Tesla Inc.
+                    "META".to_string(),  // Meta Platforms Inc.
+                    "BRK.B".to_string(), // Berkshire Hathaway Inc. Class B
+                    "AVGO".to_string(),  // Broadcom Inc.
+                    "JPM".to_string(),   // JPMorgan Chase & Co.
+                    "LLY".to_string(),   // Eli Lilly and Company
+                    "V".to_string(),     // Visa Inc.
+                    "UNH".to_string(),   // UnitedHealth Group Inc.
+                    "XOM".to_string(),   // Exxon Mobil Corporation
+                    "MA".to_string(),    // Mastercard Inc.
+                    "ORCL".to_string(),  // Oracle Corporation
+                    "HD".to_string(),    // The Home Depot Inc.
+                    "PG".to_string(),    // Procter & Gamble Co.
+                    "JNJ".to_string(),   // Johnson & Johnson
+                    "COST".to_string(),  // Costco Wholesale Corporation
+                    "ABBV".to_string(),  // AbbVie Inc.
+                    "NFLX".to_string(),  // Netflix Inc.
+                    "BAC".to_string(),   // Bank of America Corporation
+                    "CRM".to_string(),   // Salesforce Inc.
+                    "KO".to_string(),    // The Coca-Cola Company
+                    "AMD".to_string(),   // Advanced Micro Devices Inc.
+                    "PEP".to_string(),   // PepsiCo Inc.
+                    "TMO".to_string(),   // Thermo Fisher Scientific Inc.
+                    "LIN".to_string(),   // Linde plc
+                    "WMT".to_string(),   // Walmart Inc.
+                    "ABT".to_string(),   // Abbott Laboratories
+                    "CSCO".to_string(),  // Cisco Systems Inc.
+                    "ACN".to_string(),   // Accenture plc
+                    "DIS".to_string(),   // The Walt Disney Company
+                    "MRK".to_string(),   // Merck & Co. Inc.
+                    "VZ".to_string(),    // Verizon Communications Inc.
+                    "ADBE".to_string(),  // Adobe Inc.
+                    "COP".to_string(),   // ConocoPhillips
+                    "INTC".to_string(),  // Intel Corporation
+                    "IBM".to_string(),   // International Business Machines
+                    "TXN".to_string(),   // Texas Instruments Inc.
+                    "GE".to_string(),    // General Electric Company
+                    "QCOM".to_string(),  // QUALCOMM Inc.
+                    "PM".to_string(),    // Philip Morris International
+                    "CAT".to_string(),   // Caterpillar Inc.
+                    "NOW".to_string(),   // ServiceNow Inc.
+                    "CVX".to_string(),   // Chevron Corporation
+                    "GS".to_string(),    // The Goldman Sachs Group Inc.
+                    "INTU".to_string(),  // Intuit Inc.
+                    "SPGI".to_string(),  // S&P Global Inc.
                 ],
                 ..Default::default()
             },
@@ -155,7 +163,6 @@ impl Default for Config {
         }
     }
 }
-
 
 impl Config {
     pub async fn from_file(path: &str) -> Result<Self> {
@@ -189,35 +196,29 @@ impl Config {
 
         // Read and parse the config file
         let content = fs::read_to_string(path).await.map_err(|e| {
-            OracleError::IoOperationFailed(format!(
-                "Failed to read config file '{}': {}",
-                path, e
-            ))
+            OracleError::IoOperationFailed(format!("Failed to read config file '{}': {}", path, e))
         })?;
-        
+
         let config: Config = serde_json::from_str(&content).map_err(|e| {
-            OracleError::ConfigError(format!(
-                "Failed to parse config file '{}': {}",
-                path, e
-            ))
+            OracleError::ConfigError(format!("Failed to parse config file '{}': {}", path, e))
         })?;
-        
+
         Ok(config)
     }
-    
+
     pub fn validate(&self) -> Result<()> {
         if self.crypto.symbols.is_empty() && self.stocks.symbols.is_empty() {
             return Err(OracleError::ConfigError(
-                "No symbols configured for crypto or stocks".to_string()
+                "No symbols configured for crypto or stocks".to_string(),
             ));
         }
-        
+
         if self.general.request_timeout == 0 {
             return Err(OracleError::ConfigError(
-                "Request timeout must be greater than 0".to_string()
+                "Request timeout must be greater than 0".to_string(),
             ));
         }
-        
+
         Ok(())
     }
 }
