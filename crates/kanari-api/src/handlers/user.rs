@@ -9,7 +9,6 @@ use axum::{
 use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use sqlx::Row;
-// ...existing code...
 
 use crate::api::AppState;
 use crate::auth::{create_monthly_token, validate_token};
@@ -17,6 +16,8 @@ use crate::models::{
     ApiResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, RegisterRequest,
     TokenResponse, UserListResponse, UserProfile,
 };
+
+use crate::models::{TokenInfo, TokenListResponse, CreateTokenRequest};
 
 // Register a new user and return an API token
 pub async fn register_user(
@@ -62,6 +63,190 @@ pub async fn register_user(
                 expires_at: expires.to_rfc3339(),
             })))
         }
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
+}
+
+// List API tokens for the authenticated user
+pub async fn list_user_tokens(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<ApiResponse<TokenListResponse>>, StatusCode> {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
+        Some(t) => t,
+        None => return Ok(Json(ApiResponse::error("Missing Authorization header".to_string()))),
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error("Invalid or expired token".to_string())));
+    }
+
+    // Get owner
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(r)) => r,
+        _ => return Ok(Json(ApiResponse::error("Token not found".to_string()))),
+    };
+
+    let owner: String = match owner_row.try_get("owner") {
+        Ok(o) => o,
+        Err(_) => return Ok(Json(ApiResponse::error("Invalid token owner".to_string()))),
+    };
+
+    let rows = match sqlx::query("SELECT token, expires_at, created_at FROM api_tokens WHERE owner = $1 ORDER BY created_at DESC")
+        .bind(&owner)
+        .fetch_all(&state.db)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let mut tokens = Vec::new();
+    for row in &rows {
+        let tok: String = row.try_get("token").unwrap_or_default();
+        let expires_naive: NaiveDateTime = row.try_get("expires_at").unwrap_or_default();
+        let created_naive: NaiveDateTime = row.try_get("created_at").unwrap_or_default();
+        let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+        let created = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_naive, Utc);
+
+        tokens.push(TokenInfo {
+            token: tok,
+            expires_at: expires.to_rfc3339(),
+            created_at: created.to_rfc3339(),
+        });
+    }
+
+    Ok(Json(ApiResponse::success(TokenListResponse { tokens })))
+}
+
+// Create a new API token for the authenticated user
+pub async fn create_user_token(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(_payload): Json<CreateTokenRequest>,
+) -> Result<Json<ApiResponse<TokenResponse>>, StatusCode> {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
+        Some(t) => t,
+        None => return Ok(Json(ApiResponse::error("Missing Authorization header".to_string()))),
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error("Invalid or expired token".to_string())));
+    }
+
+    // Find owner
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(r)) => r,
+        _ => return Ok(Json(ApiResponse::error("Token not found".to_string()))),
+    };
+
+    let owner: String = match owner_row.try_get("owner") {
+        Ok(o) => o,
+        Err(_) => return Ok(Json(ApiResponse::error("Invalid token owner".to_string()))),
+    };
+
+    match create_monthly_token(&state.db, &owner).await {
+        Ok(new_token) => {
+            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+                .bind(&new_token)
+                .fetch_one(&state.db)
+                .await
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires_naive: NaiveDateTime = row
+                .try_get("expires_at")
+                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            Ok(Json(ApiResponse::success(TokenResponse {
+                token: new_token,
+                expires_at: expires.to_rfc3339(),
+            })))
+        }
+        Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
+    }
+}
+
+// Delete (revoke) a specific token for the authenticated user's account
+pub async fn delete_user_token(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+    Json(payload): Json<crate::models::RevokeTokenRequest>,
+) -> Result<Json<ApiResponse<String>>, StatusCode> {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
+        Some(t) => t,
+        None => return Ok(Json(ApiResponse::error("Missing Authorization header".to_string()))),
+    };
+
+    if !validate_token(&state.db, token).await {
+        return Ok(Json(ApiResponse::error("Invalid or expired token".to_string())));
+    }
+
+    // Ensure the requester owns the token they are deleting
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(r)) => r,
+        _ => return Ok(Json(ApiResponse::error("Token not found".to_string()))),
+    };
+
+    let owner: String = match owner_row.try_get("owner") {
+        Ok(o) => o,
+        Err(_) => return Ok(Json(ApiResponse::error("Invalid token owner".to_string()))),
+    };
+
+    // Verify the payload token belongs to the same owner
+    let target_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(&payload.token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(r)) => r,
+        Ok(None) => return Ok(Json(ApiResponse::error("Token to delete not found".to_string()))),
+        Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
+    };
+
+    let target_owner: String = match target_row.try_get("owner") {
+        Ok(o) => o,
+        Err(_) => return Ok(Json(ApiResponse::error("Invalid token owner".to_string()))),
+    };
+
+    if target_owner != owner {
+        return Ok(Json(ApiResponse::error("Cannot delete token for another user".to_string())));
+    }
+
+    match sqlx::query("DELETE FROM api_tokens WHERE token = $1")
+        .bind(&payload.token)
+        .execute(&state.db)
+        .await
+    {
+        Ok(_) => Ok(Json(ApiResponse::success("Token revoked".to_string()))),
         Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
     }
 }

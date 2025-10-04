@@ -81,6 +81,29 @@ pub struct TokenResponse {
 }
 
 #[derive(Serialize)]
+pub struct TokenInfo {
+    pub token: String,
+    pub expires_at: String,
+    pub created_at: String,
+}
+
+#[derive(Serialize)]
+pub struct TokenListResponse {
+    pub tokens: Vec<TokenInfo>,
+}
+
+#[derive(Deserialize)]
+pub struct CreateTokenRequest {
+    // optional label to identify token on client
+    pub label: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct RevokeTokenRequest {
+    pub token: String,
+}
+
+#[derive(Serialize)]
 pub struct UserProfile {
     pub id: i32,
     pub username: String,

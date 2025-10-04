@@ -12,9 +12,9 @@ use kanari_oracle::oracle::Oracle;
 
 use crate::database::{DbPool, create_db_pool, initialize_database};
 use crate::handlers::{
-    change_user_password, delete_user_account, get_all_prices, get_price, get_stats,
-    get_user_profile, health_check, list_symbols, list_users, login_user, register_user,
-    update_prices,
+    change_user_password, create_user_token, delete_user_account, delete_user_token,
+    get_all_prices, get_price, get_stats, get_user_profile, health_check, list_symbols,
+    list_user_tokens, list_users, login_user, register_user, update_prices,
 };
 
 pub type SharedOracle = Arc<RwLock<Oracle>>;
@@ -43,6 +43,12 @@ pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
         .route("/users/register", post(register_user))
         .route("/users/login", post(login_user))
         .route("/users/list", get(list_users))
+        // Token management
+        .route(
+            "/users/tokens",
+            get(list_user_tokens).post(create_user_token),
+        )
+        .route("/users/tokens/revoke", post(delete_user_token))
         .route("/users/profile", get(get_user_profile))
         .route("/users/change-password", post(change_user_password))
         .route("/users/delete", post(delete_user_account))
@@ -92,6 +98,15 @@ pub async fn start_api_server_with_shared_oracle(
     );
     log::info!(
         "  POST /users/delete               - Delete user account (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  GET  /users/tokens               - List your API tokens (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/tokens               - Create a new API token (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/tokens/revoke        - Revoke an API token (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
     );
     log::info!(
         "  Example (curl): curl -H \"Authorization: Bearer <YOUR_TOKEN_HERE>\" http://localhost:3000/users/profile"

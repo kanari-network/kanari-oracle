@@ -210,8 +210,112 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/list" -Headers $headers
   },
   "error": null
 }
+
+### Token Management
+
+These endpoints let authenticated users manage their API tokens. All requests require the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`.
+
+#### List Tokens
+
+**GET** `/users/tokens`
+
+Return a list of API tokens owned by the authenticated user.
+
+**Example (curl):**
+
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/users/tokens"
 ```
 
+**PowerShell Example:**
+
+```powershell
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
+Invoke-RestMethod -Uri "http://localhost:3000/users/tokens" -Headers $headers
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "tokens": [
+      { "token": "abc-...", "expires_at": "2025-11-02T14:30:00Z", "created_at": "2025-10-03T14:30:00Z" },
+      { "token": "def-...", "expires_at": "2025-11-05T10:00:00Z", "created_at": "2025-10-04T08:00:00Z" }
+    ]
+  },
+  "error": null
+}
+```
+
+#### Create Token
+
+**POST** `/users/tokens`
+
+Create a new API token for the authenticated user. Optional body parameter `label` may be provided to name the token (clients may choose to store the label locally).
+
+**Request Body (optional):**
+
+```json
+{ "label": "automation-key-1" }
+```
+
+**Example (curl):**
+
+```bash
+curl -X POST "http://localhost:3000/users/tokens" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"label":"automation-key-1"}'
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": {
+    "token": "newly-created-token-value",
+    "expires_at": "2025-11-03T12:00:00Z"
+  },
+  "error": null
+}
+```
+
+> Note: For security, store the returned token securely — this value is shown at creation. Treat it like a password.
+
+#### Revoke Token
+
+**POST** `/users/tokens/revoke`
+
+Revoke (delete) a token owned by the authenticated user. Request must include the token to revoke.
+
+**Request Body:**
+
+```json
+{ "token": "token-to-revoke-value" }
+```
+
+**Example (curl):**
+
+```bash
+curl -X POST "http://localhost:3000/users/tokens/revoke" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"token":"token-to-revoke-value"}'
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": "Token revoked",
+  "error": null
+}
+```
+ 
 ### Change Password
 
 **POST** `/users/change-password`
@@ -318,10 +422,10 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/delete" -Method Post -Body $
 
 ### Using API Tokens
 
-Include your token as a query parameter in all authenticated requests:
+Include your API token in authenticated requests using the Authorization header.
 
-```
-GET /price/crypto/bitcoin?token=YOUR_TOKEN_HERE
+```bash
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/price/crypto/bitcoin"
 ```
 
 **Token Details:**
