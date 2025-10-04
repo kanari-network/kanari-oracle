@@ -5,6 +5,7 @@
 Kanari Oracle provides real-time cryptocurrency and stock price data through secure HTTP API endpoints. This API is designed for web3 applications, trading bots, and financial services that need reliable and authenticated price feeds.
 
 **Key Features:**
+
 - Real-time crypto and stock price data
 - User authentication with secure token management
 - Background price updates every 30 seconds
@@ -51,6 +52,7 @@ Most API endpoints require authentication using API tokens. You need to register
 Create a new user account and receive an API token.
 
 **Request Body:**
+
 ```json
 {
   "username": "your_username",
@@ -60,6 +62,7 @@ Create a new user account and receive an API token.
 ```
 
 **Example:**
+
 ```bash
 curl -X POST http://localhost:3000/users/register \
   -H "Content-Type: application/json" \
@@ -67,6 +70,7 @@ curl -X POST http://localhost:3000/users/register \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -85,6 +89,7 @@ curl -X POST http://localhost:3000/users/register \
 Login with existing credentials to get a new API token.
 
 **Request Body:**
+
 ```json
 {
   "username": "your_username",
@@ -93,6 +98,7 @@ Login with existing credentials to get a new API token.
 ```
 
 **Example:**
+
 ```bash
 curl -X POST http://localhost:3000/users/login \
   -H "Content-Type: application/json" \
@@ -100,12 +106,14 @@ curl -X POST http://localhost:3000/users/login \
 ```
 
 **PowerShell Example:**
+
 ```powershell
 $body = @{ username="alice"; password="secret123" } | ConvertTo-Json
 Invoke-RestMethod -Uri "http://localhost:3000/users/login" -Method Post -Body $body -ContentType "application/json"
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -119,24 +127,29 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/login" -Method Post -Body $b
 
 ### Get User Profile
 
-**GET** `/users/profile?token={your_token}`
+**GET** `/users/profile`
 
 Get the current user's profile information.
 
-**Parameters:**
-- `token`: Your API token (query parameter)
+**Authentication:**
+
+- Send your API token in the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`
 
 **Example:**
+
 ```bash
-curl "http://localhost:3000/users/profile?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/users/profile"
 ```
 
 **PowerShell Example:**
+
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/users/profile?token=YOUR_TOKEN_HERE"
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
+Invoke-RestMethod -Uri "http://localhost:3000/users/profile" -Headers $headers
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -152,24 +165,29 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/profile?token=YOUR_TOKEN_HER
 
 ### List All Users
 
-**GET** `/users/list?token={your_token}`
+**GET** `/users/list`
 
 Get a list of all registered users (admin function).
 
-**Parameters:**
-- `token`: Your API token (query parameter)
+**Authentication:**
+
+- Requires an admin user and the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`
 
 **Example:**
+
 ```bash
-curl "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/users/list"
 ```
 
 **PowerShell Example:**
+
 ```powershell
-Invoke-RestMethod -Uri "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
+Invoke-RestMethod -Uri "http://localhost:3000/users/list" -Headers $headers
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -196,14 +214,16 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/list?token=YOUR_TOKEN_HERE"
 
 ### Change Password
 
-**POST** `/users/change-password?token={your_token}`
+**POST** `/users/change-password`
 
 Change the current user's password. Requires current password confirmation.
 
-**Parameters:**
-- `token`: Your API token (query parameter)
+**Authentication:**
+
+- Send your API token in the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`
 
 **Request Body:**
+
 ```json
 {
   "current_password": "current_password",
@@ -212,19 +232,24 @@ Change the current user's password. Requires current password confirmation.
 ```
 
 **Example:**
+
 ```bash
-curl -X POST "http://localhost:3000/users/change-password?token=YOUR_TOKEN_HERE" \
+curl -X POST "http://localhost:3000/users/change-password" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -d '{"current_password":"old_password","new_password":"new_secure_password"}'
 ```
 
 **PowerShell Example:**
+
 ```powershell
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
 $body = @{ current_password="old_password"; new_password="new_secure_password" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:3000/users/change-password?token=YOUR_TOKEN_HERE" -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:3000/users/change-password" -Method Post -Body $body -Headers $headers -ContentType "application/json"
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -234,6 +259,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/change-password?token=YOUR_T
 ```
 
 **Security Notes:**
+
 - Requires current password verification
 - New password is hashed using Argon2id
 - All existing tokens remain valid after password change
@@ -241,14 +267,16 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/change-password?token=YOUR_T
 
 ### Delete User Account
 
-**POST** `/users/delete?token={your_token}`
+**POST** `/users/delete`
 
 Delete the current user's account permanently. Requires password confirmation.
 
-**Parameters:**
-- `token`: Your API token (query parameter)
+**Authentication:**
+
+- Send your API token in the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`
 
 **Request Body:**
+
 ```json
 {
   "password": "current_password"
@@ -256,19 +284,24 @@ Delete the current user's account permanently. Requires password confirmation.
 ```
 
 **Example:**
+
 ```bash
-curl -X POST "http://localhost:3000/users/delete?token=YOUR_TOKEN_HERE" \
+curl -X POST "http://localhost:3000/users/delete" \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -d '{"password":"your_password"}'
 ```
 
 **PowerShell Example:**
+
 ```powershell
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
 $body = @{ password="your_password" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:3000/users/delete?token=YOUR_TOKEN_HERE" -Method Post -Body $body -ContentType "application/json"
+Invoke-RestMethod -Uri "http://localhost:3000/users/delete" -Method Post -Body $body -Headers $headers -ContentType "application/json"
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -278,6 +311,7 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/delete?token=YOUR_TOKEN_HERE
 ```
 
 **⚠️ Warning:** This action is permanent and will delete:
+
 - User account and profile
 - All associated API tokens
 - Cannot be undone
@@ -291,6 +325,7 @@ GET /price/crypto/bitcoin?token=YOUR_TOKEN_HERE
 ```
 
 **Token Details:**
+
 - Tokens expire after 30 days
 - Each login/registration generates a new token
 - Store tokens securely and refresh before expiration
@@ -304,11 +339,13 @@ GET /price/crypto/bitcoin?token=YOUR_TOKEN_HERE
 Returns the current status of the Oracle service. No authentication required.
 
 **Example:**
+
 ```bash
 curl http://localhost:3000/health
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -323,7 +360,7 @@ curl http://localhost:3000/health
 
 ### 2. Get Specific Price (Authenticated)
 
-**GET** `/price/{asset_type}/{symbol}?token={your_token}`
+**GET** `/price/{asset_type}/{symbol}`
 
 Get the current price for a specific symbol.
 
@@ -337,10 +374,10 @@ Get the current price for a specific symbol.
 
 ```bash
 # Get Bitcoin price
-curl "http://localhost:3000/price/crypto/bitcoin?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/price/crypto/bitcoin"
 
 # Get Apple stock price
-curl "http://localhost:3000/price/stock/AAPL?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/price/stock/AAPL"
 ```
 
 **Response:**
@@ -360,7 +397,7 @@ curl "http://localhost:3000/price/stock/AAPL?token=YOUR_TOKEN_HERE"
 
 ### 3. Get All Prices by Type (Authenticated)
 
-**GET** `/prices/{asset_type}?token={your_token}`
+**GET** `/prices/{asset_type}`
 
 Get all current prices for a specific asset type.
 
@@ -373,10 +410,10 @@ Get all current prices for a specific asset type.
 
 ```bash
 # Get all crypto prices
-curl "http://localhost:3000/prices/crypto?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/prices/crypto"
 
 # Get all stock prices
-curl "http://localhost:3000/prices/stock?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/prices/stock"
 ```
 
 **Response:**
@@ -404,7 +441,7 @@ curl "http://localhost:3000/prices/stock?token=YOUR_TOKEN_HERE"
 
 ### 4. List Available Symbols (Authenticated)
 
-**GET** `/symbols?token={your_token}&asset_type={type}`
+**GET** `/symbols?asset_type={type}`
 
 List all available symbols for trading.
 
@@ -417,13 +454,13 @@ List all available symbols for trading.
 
 ```bash
 # Get all symbols
-curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/symbols"
 
-# Get only crypto symbols  
-curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE&asset_type=crypto"
+# Get only crypto symbols
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/symbols?asset_type=crypto"
 
 # Get only stock symbols
-curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE&asset_type=stock"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/symbols?asset_type=stock"
 ```
 
 **Response:**
@@ -441,14 +478,14 @@ curl "http://localhost:3000/symbols?token=YOUR_TOKEN_HERE&asset_type=stock"
 
 ### 5. Get Oracle Statistics (Authenticated)
 
-**GET** `/stats?token={your_token}`
+**GET** `/stats`
 
 Get detailed statistics about the Oracle service.
 
 **Example:**
 
 ```bash
-curl "http://localhost:3000/stats?token=YOUR_TOKEN_HERE"
+curl -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/stats"
 ```
 
 **Response:**
@@ -470,7 +507,7 @@ curl "http://localhost:3000/stats?token=YOUR_TOKEN_HERE"
 
 ### 6. Force Update Prices (Authenticated)
 
-**POST** `/update/{asset_type}?token={your_token}`
+**POST** `/update/{asset_type}`
 
 Force an immediate update of price data.
 
@@ -483,13 +520,13 @@ Force an immediate update of price data.
 
 ```bash
 # Update crypto prices
-curl -X POST "http://localhost:3000/update/crypto?token=YOUR_TOKEN_HERE"
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/update/crypto"
 
-# Update stock prices  
-curl -X POST "http://localhost:3000/update/stock?token=YOUR_TOKEN_HERE"
+# Update stock prices
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/update/stock"
 
 # Update all prices
-curl -X POST "http://localhost:3000/update/all?token=YOUR_TOKEN_HERE"
+curl -X POST -H "Authorization: Bearer YOUR_TOKEN_HERE" "http://localhost:3000/update/all"
 ```
 
 **Response:**
@@ -559,28 +596,36 @@ class KanariOracle {
 
   async getCryptoPrice(symbol) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/price/crypto/${symbol}?token=${this.token}`);
+    const response = await fetch(`${this.baseUrl}/price/crypto/${symbol}`, {
+      headers: { 'Authorization': `Bearer ${this.token}` }
+    });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async getStockPrice(symbol) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/price/stock/${symbol}?token=${this.token}`);
+    const response = await fetch(`${this.baseUrl}/price/stock/${symbol}`, {
+      headers: { 'Authorization': `Bearer ${this.token}` }
+    });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async getAllCryptoPrices() {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/prices/crypto?token=${this.token}`);
+    const response = await fetch(`${this.baseUrl}/prices/crypto`, {
+      headers: { 'Authorization': `Bearer ${this.token}` }
+    });
     const data = await response.json();
     return data.success ? data.data : [];
   }
 
   async getAllStockPrices() {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/prices/stock?token=${this.token}`);
+    const response = await fetch(`${this.baseUrl}/prices/stock`, {
+      headers: { 'Authorization': `Bearer ${this.token}` }
+    });
     const data = await response.json();
     return data.success ? data.data : [];
   }
@@ -588,17 +633,18 @@ class KanariOracle {
   async getSymbols(assetType = null) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
     const url = assetType 
-      ? `${this.baseUrl}/symbols?token=${this.token}&asset_type=${assetType}`
-      : `${this.baseUrl}/symbols?token=${this.token}`;
-    const response = await fetch(url);
+      ? `${this.baseUrl}/symbols?asset_type=${assetType}`
+      : `${this.baseUrl}/symbols`;
+    const response = await fetch(url, { headers: { 'Authorization': `Bearer ${this.token}` } });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async forceUpdate(assetType = 'all') {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/update/${assetType}?token=${this.token}`, {
-      method: 'POST'
+    const response = await fetch(`${this.baseUrl}/update/${assetType}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${this.token}` }
     });
     const data = await response.json();
     return data.success;
@@ -606,30 +652,30 @@ class KanariOracle {
 
   async getStats() {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/stats?token=${this.token}`);
+  const response = await fetch(`${this.baseUrl}/stats`, { headers: { 'Authorization': `Bearer ${this.token}` } });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async getUserProfile() {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/users/profile?token=${this.token}`);
+  const response = await fetch(`${this.baseUrl}/users/profile`, { headers: { 'Authorization': `Bearer ${this.token}` } });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async listAllUsers() {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/users/list?token=${this.token}`);
+  const response = await fetch(`${this.baseUrl}/users/list`, { headers: { 'Authorization': `Bearer ${this.token}` } });
     const data = await response.json();
     return data.success ? data.data : null;
   }
 
   async changePassword(currentPassword, newPassword) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/users/change-password?token=${this.token}`, {
+    const response = await fetch(`${this.baseUrl}/users/change-password`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
       body: JSON.stringify({ 
         current_password: currentPassword, 
         new_password: newPassword 
@@ -641,9 +687,9 @@ class KanariOracle {
 
   async deleteAccount(password) {
     if (!this.token) throw new Error('Not authenticated. Call login() or register() first.');
-    const response = await fetch(`${this.baseUrl}/users/delete?token=${this.token}`, {
+    const response = await fetch(`${this.baseUrl}/users/delete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.token}` },
       body: JSON.stringify({ password })
     });
     const data = await response.json();
@@ -733,91 +779,91 @@ class KanariOracle:
     def get_crypto_price(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get current price for a cryptocurrency"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/price/crypto/{symbol}?token={self.token}')
+  response = requests.get(f'{self.base_url}/price/crypto/{symbol}', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def get_stock_price(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get current price for a stock"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/price/stock/{symbol}?token={self.token}')
+  response = requests.get(f'{self.base_url}/price/stock/{symbol}', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def get_all_crypto_prices(self) -> List[Dict[str, Any]]:
         """Get all cryptocurrency prices"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/prices/crypto?token={self.token}')
+  response = requests.get(f'{self.base_url}/prices/crypto', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else []
 
     def get_all_stock_prices(self) -> List[Dict[str, Any]]:
         """Get all stock prices"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/prices/stock?token={self.token}')
+  response = requests.get(f'{self.base_url}/prices/stock', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else []
 
     def get_symbols(self, asset_type: Optional[str] = None) -> Optional[Dict[str, List[str]]]:
         """Get available symbols"""
         self._check_auth()
-        url = f'{self.base_url}/symbols?token={self.token}'
-        if asset_type:
-            url += f'&asset_type={asset_type}'
-        response = requests.get(url)
+    url = f'{self.base_url}/symbols'
+    if asset_type:
+      url += f'?asset_type={asset_type}'
+    response = requests.get(url, headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def force_update(self, asset_type: str = 'all') -> bool:
         """Force immediate price update"""
         self._check_auth()
-        response = requests.post(f'{self.base_url}/update/{asset_type}?token={self.token}')
+  response = requests.post(f'{self.base_url}/update/{asset_type}', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['success']
 
     def get_stats(self) -> Optional[Dict[str, Any]]:
         """Get oracle statistics"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/stats?token={self.token}')
+  response = requests.get(f'{self.base_url}/stats', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def get_user_profile(self) -> Optional[Dict[str, Any]]:
         """Get current user profile"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/users/profile?token={self.token}')
+  response = requests.get(f'{self.base_url}/users/profile', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def list_all_users(self) -> Optional[Dict[str, Any]]:
         """List all users (admin function)"""
         self._check_auth()
-        response = requests.get(f'{self.base_url}/users/list?token={self.token}')
+  response = requests.get(f'{self.base_url}/users/list', headers={'Authorization': f'Bearer {self.token}'})
         data = response.json()
         return data['data'] if data['success'] else None
 
     def change_password(self, current_password: str, new_password: str) -> bool:
         """Change current user's password"""
         self._check_auth()
-        response = requests.post(
-            f'{self.base_url}/users/change-password?token={self.token}',
-            json={
-                "current_password": current_password,
-                "new_password": new_password
-            },
-            headers={'Content-Type': 'application/json'}
-        )
+    response = requests.post(
+      f'{self.base_url}/users/change-password',
+      json={
+        "current_password": current_password,
+        "new_password": new_password
+      },
+      headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {self.token}'}
+    )
         data = response.json()
         return data['success']
 
     def delete_account(self, password: str) -> bool:
         """Delete current user account permanently"""
         self._check_auth()
-        response = requests.post(
-            f'{self.base_url}/users/delete?token={self.token}',
-            json={"password": password},
-            headers={'Content-Type': 'application/json'}
-        )
+    response = requests.post(
+      f'{self.base_url}/users/delete',
+      json={"password": password},
+      headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {self.token}'}
+    )
         data = response.json()
         if data['success']:
             self.token = None  # Clear token since account is deleted
@@ -963,35 +1009,37 @@ impl KanariOracle {
 
     pub async fn get_crypto_price(&self, symbol: &str) -> Result<Option<PriceData>, Box<dyn std::error::Error>> {
         let token = self.check_auth()?;
-        let url = format!("{}/price/crypto/{}?token={}", self.base_url, symbol, token);
+  let url = format!("{}/price/crypto/{}", self.base_url, symbol);
         
-        let response: ApiResponse<PriceData> = self.client
-            .get(&url)
-            .send()
-            .await?
-            .json()
-            .await?;
+    let response: ApiResponse<PriceData> = self.client
+      .get(&url)
+      .header("Authorization", format!("Bearer {}", token))
+      .send()
+      .await?
+      .json()
+      .await?;
 
         Ok(response.data)
     }
 
     pub async fn get_stock_price(&self, symbol: &str) -> Result<Option<PriceData>, Box<dyn std::error::Error>> {
         let token = self.check_auth()?;
-        let url = format!("{}/price/stock/{}?token={}", self.base_url, symbol, token);
+  let url = format!("{}/price/stock/{}", self.base_url, symbol);
         
-        let response: ApiResponse<PriceData> = self.client
-            .get(&url)
-            .send()
-            .await?
-            .json()
-            .await?;
+    let response: ApiResponse<PriceData> = self.client
+      .get(&url)
+      .header("Authorization", format!("Bearer {}", token))
+      .send()
+      .await?
+      .json()
+      .await?;
 
         Ok(response.data)
     }
 
     pub async fn change_password(&self, current_password: &str, new_password: &str) -> Result<bool, Box<dyn std::error::Error>> {
         let token = self.check_auth()?;
-        let url = format!("{}/users/change-password?token={}", self.base_url, token);
+  let url = format!("{}/users/change-password", self.base_url);
         
         #[derive(Serialize)]
         struct ChangePasswordPayload<'a> {
@@ -1004,27 +1052,29 @@ impl KanariOracle {
             new_password,
         };
 
-        let response: ApiResponse<String> = self.client
-            .post(&url)
-            .json(&payload)
-            .send()
-            .await?
-            .json()
-            .await?;
+    let response: ApiResponse<String> = self.client
+      .post(&url)
+      .header("Authorization", format!("Bearer {}", token))
+      .json(&payload)
+      .send()
+      .await?
+      .json()
+      .await?;
 
         Ok(response.success)
     }
 
     pub async fn force_update(&self, asset_type: &str) -> Result<bool, Box<dyn std::error::Error>> {
         let token = self.check_auth()?;
-        let url = format!("{}/update/{}?token={}", self.base_url, asset_type, token);
+  let url = format!("{}/update/{}", self.base_url, asset_type);
         
-        let response: ApiResponse<String> = self.client
-            .post(&url)
-            .send()
-            .await?
-            .json()
-            .await?;
+    let response: ApiResponse<String> = self.client
+      .post(&url)
+      .header("Authorization", format!("Bearer {}", token))
+      .send()
+      .await?
+      .json()
+      .await?;
 
         Ok(response.success)
     }
@@ -1069,19 +1119,23 @@ When an error occurs, the API returns a standardized error response:
 ### Common Error Types
 
 **Authentication Errors:**
+
 - `"Missing token query parameter"` - Token not provided
 - `"Invalid or expired token"` - Token is invalid or has expired
 - `"Invalid username or password"` - Login credentials incorrect
 
 **Validation Errors:**
+
 - `"Invalid asset type. Use 'crypto' or 'stock'"` - Wrong asset type specified
 - `"Symbol 'XYZ' not configured for crypto"` - Symbol not available
 
 **Database Errors:**
+
 - `"error returned from database: relation \"users\" does not exist"` - Database not initialized
 - `"error returned from database: password authentication failed"` - Database connection issues
 
 **Rate Limiting:**
+
 - Price fetching may fail if external APIs are rate limited; the system uses fallback APIs automatically
 
 ### HTTP Status Codes
@@ -1147,10 +1201,12 @@ The API server uses the same configuration file as the CLI tool for external API
 The Oracle respects upstream API rate limits and implements fallback mechanisms:
 
 **Cryptocurrency APIs:**
+
 - **CoinGecko**: 10-50 calls/minute (free), higher limits with API key
 - **Binance**: 1200 requests per minute
 
 **Stock APIs:**
+
 - **Alpha Vantage**: 5 calls per minute (free tier), 500/minute (premium)
 - **Finnhub**: 60 calls per minute (free tier), higher limits with API key
 - **Yahoo Finance**: Used as fallback (no API key required)

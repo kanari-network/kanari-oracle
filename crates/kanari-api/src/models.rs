@@ -103,4 +103,6 @@ pub struct DeleteAccountRequest {
 pub struct ChangePasswordRequest {
     pub current_password: String,
     pub new_password: String,
+    // If true, revoke other tokens for this user (keeps the current token)
+    pub revoke_others: Option<bool>,
 }

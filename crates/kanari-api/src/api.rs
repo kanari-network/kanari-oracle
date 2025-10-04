@@ -12,8 +12,8 @@ use kanari_oracle::oracle::Oracle;
 
 use crate::database::{DbPool, create_db_pool, initialize_database};
 use crate::handlers::{
-    change_user_password, delete_user_account, get_all_prices, get_price, get_stats, 
-    get_user_profile, health_check, list_symbols, list_users, login_user, register_user, 
+    change_user_password, delete_user_account, get_all_prices, get_price, get_stats,
+    get_user_profile, health_check, list_symbols, list_users, login_user, register_user,
     update_prices,
 };
 
@@ -79,11 +79,23 @@ pub async fn start_api_server_with_shared_oracle(
     log::info!("  GET  /symbols?asset_type=type    - List available symbols");
     log::info!("  GET  /stats                      - Oracle statistics");
     log::info!("  POST /update/:type               - Force update prices (crypto, stock, all)");
-    log::info!("  POST /users/register             - Register new user");
-    log::info!("  POST /users/login                - User login");
-    log::info!("  GET  /users/list                 - List all users");
-    log::info!("  GET  /users/profile              - Get user profile");
-    log::info!("  POST /users/delete               - Delete user account");
+    log::info!("  POST /users/register             - Register new user (public)");
+    log::info!("  POST /users/login                - User login (public)");
+    log::info!(
+        "  GET  /users/list                 - List all users (admin, requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  GET  /users/profile              - Get user profile (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/change-password      - Change password (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/delete               - Delete user account (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  Example (curl): curl -H \"Authorization: Bearer <YOUR_TOKEN_HERE>\" http://localhost:3000/users/profile"
+    );
 
     axum::serve(listener, app).await?;
 

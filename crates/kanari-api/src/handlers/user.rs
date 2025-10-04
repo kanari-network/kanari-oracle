@@ -3,18 +3,18 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
 use axum::{
-    extract::{Json, Query, State},
-    http::StatusCode,
+    extract::{Json, State},
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
 };
 use chrono::{NaiveDateTime, Utc};
 use rand::rngs::OsRng;
 use sqlx::Row;
-use std::collections::HashMap;
+// ...existing code...
 
 use crate::api::AppState;
 use crate::auth::{create_monthly_token, validate_token};
 use crate::models::{
-    ApiResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, RegisterRequest, 
+    ApiResponse, ChangePasswordRequest, DeleteAccountRequest, LoginRequest, RegisterRequest,
     TokenResponse, UserListResponse, UserProfile,
 };
 
@@ -123,18 +123,63 @@ pub async fn login_user(
 
 // List all users (admin endpoint - requires valid token)
 pub async fn list_users(
-    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<UserListResponse>>, StatusCode> {
-    if let Some(token) = query.get("token") {
-        if !validate_token(&state.db, token).await {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
+        Some(t) => t,
+        None => {
             return Ok(Json(ApiResponse::error(
-                "Invalid or expired token".to_string(),
+                "Missing Authorization header".to_string(),
             )));
         }
-    } else {
+    };
+
+    if !validate_token(&state.db, token).await {
         return Ok(Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Invalid or expired token".to_string(),
+        )));
+    }
+
+    // Check whether the token owner is an admin. If the users table doesn't have an is_admin
+    // column, default to denying access (safe-by-default). This requires a users.is_admin boolean.
+    let owner_row = match sqlx::query("SELECT owner FROM api_tokens WHERE token = $1")
+        .bind(token)
+        .fetch_optional(&state.db)
+        .await
+    {
+        Ok(Some(r)) => r,
+        _ => {
+            return Ok(Json(ApiResponse::error("Token not found".to_string())));
+        }
+    };
+
+    let owner: String = match owner_row.try_get("owner") {
+        Ok(o) => o,
+        Err(_) => return Ok(Json(ApiResponse::error("Invalid token owner".to_string()))),
+    };
+
+    // Check is_admin flag on users table. If column missing, this query will error; handle gracefully.
+    let is_admin =
+        match sqlx::query_scalar::<_, bool>("SELECT is_admin FROM users WHERE username = $1")
+            .bind(&owner)
+            .fetch_optional(&state.db)
+            .await
+        {
+            Ok(Some(flag)) => flag,
+            Ok(None) => false,
+            Err(_) => false,
+        };
+
+    if !is_admin {
+        return Ok(Json(ApiResponse::error(
+            "Admin privileges required".to_string(),
         )));
     }
 
@@ -172,14 +217,20 @@ pub async fn list_users(
 
 // Get current user profile
 pub async fn get_user_profile(
-    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<UserProfile>>, StatusCode> {
-    let token = match query.get("token") {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
         Some(t) => t,
         None => {
             return Ok(Json(ApiResponse::error(
-                "Missing token query parameter".to_string(),
+                "Missing Authorization header".to_string(),
             )));
         }
     };
@@ -239,15 +290,21 @@ pub async fn get_user_profile(
 
 // Delete user account (requires password confirmation)
 pub async fn delete_user_account(
-    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Json(payload): Json<DeleteAccountRequest>,
 ) -> Result<Json<ApiResponse<String>>, StatusCode> {
-    let token = match query.get("token") {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
         Some(t) => t,
         None => {
             return Ok(Json(ApiResponse::error(
-                "Missing token query parameter".to_string(),
+                "Missing Authorization header".to_string(),
             )));
         }
     };
@@ -326,15 +383,21 @@ pub async fn delete_user_account(
 
 // Change user password (requires current password confirmation)
 pub async fn change_user_password(
-    Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> Result<Json<ApiResponse<String>>, StatusCode> {
-    let token = match query.get("token") {
+    let token = headers
+        .get(AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.strip_prefix("Bearer "))
+        .map(|s| s.trim());
+
+    let token = match token {
         Some(t) => t,
         None => {
             return Ok(Json(ApiResponse::error(
-                "Missing token query parameter".to_string(),
+                "Missing Authorization header".to_string(),
             )));
         }
     };
@@ -416,9 +479,21 @@ pub async fn change_user_password(
         .execute(&state.db)
         .await
     {
-        Ok(_) => Ok(Json(ApiResponse::success(
-            "Password changed successfully".to_string(),
-        ))),
+        Ok(_) => {
+            // Optionally revoke other tokens for this user
+            if payload.revoke_others.unwrap_or(false) {
+                // Delete all tokens for owner except the current token
+                let _ = sqlx::query("DELETE FROM api_tokens WHERE owner = $1 AND token <> $2")
+                    .bind(&username)
+                    .bind(token)
+                    .execute(&state.db)
+                    .await;
+            }
+
+            Ok(Json(ApiResponse::success(
+                "Password changed successfully".to_string(),
+            )))
+        }
         Err(e) => Ok(Json(ApiResponse::error(e.to_string()))),
     }
 }
