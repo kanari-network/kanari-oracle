@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::Row;
 use uuid::Uuid;
+use std::collections::HashMap;
 
 use crate::database::DbPool;
 
@@ -21,6 +22,24 @@ pub async fn validate_token(db: &DbPool, token: &str) -> bool {
         }
         _ => false,
     }
+}
+
+// Extract token from Authorization header or query parameter
+pub fn extract_token_from_request(
+    headers: &axum::http::HeaderMap,
+    query: &HashMap<String, String>,
+) -> Option<String> {
+    // Try Authorization header first (Bearer token)
+    if let Some(auth_header) = headers.get("authorization") {
+        if let Ok(auth_str) = auth_header.to_str() {
+            if auth_str.starts_with("Bearer ") {
+                return Some(auth_str[7..].to_string());
+            }
+        }
+    }
+
+    // Fallback to query parameter
+    query.get("token").cloned()
 }
 
 // Create a monthly token for an owner (simple helper)
