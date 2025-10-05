@@ -6,7 +6,7 @@ use axum::{
     extract::{Json, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
 };
-use chrono::{NaiveDateTime, Utc};
+use chrono::{DateTime, Utc};
 use rand::rngs::OsRng;
 use sqlx::Row;
 
@@ -49,15 +49,18 @@ pub async fn register_user(
     match create_monthly_token(&state.db, &payload.username).await {
         Ok(token) => {
             // fetch expiry
-            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+            let row = match sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
                 .bind(&token)
                 .fetch_one(&state.db)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires_naive: NaiveDateTime = row
-                .try_get("expires_at")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            {
+                Ok(r) => r,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to fetch token expiry: {}", e)))),
+            };
+            let expires: DateTime<Utc> = match row.try_get("expires_at") {
+                Ok(dt) => dt,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to parse token expiry: {}", e)))),
+            };
             Ok(Json(ApiResponse::success(TokenResponse {
                 token,
                 expires_at: expires.to_rfc3339(),
@@ -113,11 +116,18 @@ pub async fn list_user_tokens(
 
     let mut tokens = Vec::new();
     for row in &rows {
-        let tok: String = row.try_get("token").unwrap_or_default();
-        let expires_naive: NaiveDateTime = row.try_get("expires_at").unwrap_or_default();
-        let created_naive: NaiveDateTime = row.try_get("created_at").unwrap_or_default();
-        let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
-        let created = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_naive, Utc);
+        let tok: String = match row.try_get("token") {
+            Ok(t) => t,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read token: {}", e)))),
+        };
+        let expires: DateTime<Utc> = match row.try_get("expires_at") {
+            Ok(dt) => dt,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read token expiry: {}", e)))),
+        };
+        let created: DateTime<Utc> = match row.try_get("created_at") {
+            Ok(dt) => dt,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read token creation time: {}", e)))),
+        };
 
         tokens.push(TokenInfo {
             token: tok,
@@ -167,15 +177,18 @@ pub async fn create_user_token(
 
     match create_monthly_token(&state.db, &owner).await {
         Ok(new_token) => {
-            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+            let row = match sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
                 .bind(&new_token)
                 .fetch_one(&state.db)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires_naive: NaiveDateTime = row
-                .try_get("expires_at")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            {
+                Ok(r) => r,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to fetch token expiry: {}", e)))),
+            };
+            let expires: DateTime<Utc> = match row.try_get("expires_at") {
+                Ok(dt) => dt,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to parse token expiry: {}", e)))),
+            };
             Ok(Json(ApiResponse::success(TokenResponse {
                 token: new_token,
                 expires_at: expires.to_rfc3339(),
@@ -256,16 +269,20 @@ pub async fn login_user(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<ApiResponse<TokenResponse>>, StatusCode> {
-    let row = sqlx::query("SELECT password_hash FROM users WHERE username = $1")
+    let row = match sqlx::query("SELECT password_hash FROM users WHERE username = $1")
         .bind(&payload.username)
         .fetch_optional(&state.db)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    {
+        Ok(r) => r,
+        Err(e) => return Ok(Json(ApiResponse::error(format!("Database error: {}", e)))),
+    };
 
     let hash_val: String = match row {
-        Some(r) => r
-            .try_get("password_hash")
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+        Some(r) => match r.try_get("password_hash") {
+            Ok(h) => h,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read password hash: {}", e)))),
+        },
         None => {
             return Ok(Json(ApiResponse::error(
                 "Invalid username or password".to_string(),
@@ -274,8 +291,10 @@ pub async fn login_user(
     };
 
     // verify Argon2 password
-    let parsed_hash =
-        PasswordHash::new(&hash_val).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let parsed_hash = match PasswordHash::new(&hash_val) {
+        Ok(h) => h,
+        Err(e) => return Ok(Json(ApiResponse::error(format!("Invalid password hash format: {}", e)))),
+    };
     if Argon2::default()
         .verify_password(payload.password.as_bytes(), &parsed_hash)
         .is_err()
@@ -288,15 +307,18 @@ pub async fn login_user(
     // Create and return a new token
     match create_monthly_token(&state.db, &payload.username).await {
         Ok(token) => {
-            let row = sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
+            let row = match sqlx::query("SELECT expires_at FROM api_tokens WHERE token = $1")
                 .bind(&token)
                 .fetch_one(&state.db)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires_naive: NaiveDateTime = row
-                .try_get("expires_at")
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            let expires = chrono::DateTime::<Utc>::from_naive_utc_and_offset(expires_naive, Utc);
+            {
+                Ok(r) => r,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to fetch token expiry: {}", e)))),
+            };
+            let expires: DateTime<Utc> = match row.try_get("expires_at") {
+                Ok(dt) => dt,
+                Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to parse token expiry: {}", e)))),
+            };
             Ok(Json(ApiResponse::success(TokenResponse {
                 token,
                 expires_at: expires.to_rfc3339(),
@@ -380,11 +402,19 @@ pub async fn list_users(
 
     let mut users = Vec::new();
     for row in &rows {
-        let id: i32 = row.try_get("id").unwrap_or(0);
-        let username: String = row.try_get("username").unwrap_or_default();
+        let id: i32 = match row.try_get("id") {
+            Ok(i) => i,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read user id: {}", e)))),
+        };
+        let username: String = match row.try_get("username") {
+            Ok(u) => u,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read username: {}", e)))),
+        };
         let email: Option<String> = row.try_get("email").ok();
-        let created_at_naive: NaiveDateTime = row.try_get("created_at").unwrap_or_default();
-        let created_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_at_naive, Utc);
+        let created_at: DateTime<Utc> = match row.try_get("created_at") {
+            Ok(dt) => dt,
+            Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read user creation time: {}", e)))),
+        };
 
         users.push(UserProfile {
             id,
@@ -458,10 +488,15 @@ pub async fn get_user_profile(
             Err(e) => return Ok(Json(ApiResponse::error(e.to_string()))),
         };
 
-    let id: i32 = user_row.try_get("id").unwrap_or(0);
+    let id: i32 = match user_row.try_get("id") {
+        Ok(i) => i,
+        Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read user id: {}", e)))),
+    };
     let email: Option<String> = user_row.try_get("email").ok();
-    let created_at_naive: NaiveDateTime = user_row.try_get("created_at").unwrap_or_default();
-    let created_at = chrono::DateTime::<Utc>::from_naive_utc_and_offset(created_at_naive, Utc);
+    let created_at: DateTime<Utc> = match user_row.try_get("created_at") {
+        Ok(dt) => dt,
+        Err(e) => return Ok(Json(ApiResponse::error(format!("Failed to read user creation time: {}", e)))),
+    };
 
     let profile = UserProfile {
         id,
