@@ -19,6 +19,8 @@ export default function ProfilePage() {
   const [success, setSuccess] = useState('');
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [newEmailValue, setNewEmailValue] = useState(user?.email || '');
+  const [isChangingEmail, setIsChangingEmail] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -55,6 +57,31 @@ export default function ProfilePage() {
     }
 
     setIsChangingPassword(false);
+  };
+
+  const handleChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+
+    if (!newEmailValue) {
+      setError('Please enter a valid email');
+      return;
+    }
+
+    setIsChangingEmail(true);
+
+    const response = await api.changeEmail(currentPassword, newEmailValue);
+
+    if (response.success) {
+      setSuccess('Email updated successfully!');
+      setCurrentPassword('');
+      await refreshProfile();
+    } else {
+      setError(response.error || 'Failed to update email');
+    }
+
+    setIsChangingEmail(false);
   };
 
   const handleDeleteAccount = async (e: React.FormEvent) => {
@@ -125,7 +152,7 @@ export default function ProfilePage() {
                   Email
                 </label>
                 <p className="text-lg text-gray-900 dark:text-white mt-1">
-                  {user.owner_email || 'Not provided'}
+                  {user.email || 'Not provided'}
                 </p>
               </div>
               <div>
@@ -171,6 +198,15 @@ export default function ProfilePage() {
               />
 
               <Input
+                label="New Email"
+                type="email"
+                placeholder="Enter new email"
+                value={newEmailValue}
+                onChange={(e) => setNewEmailValue(e.target.value)}
+                required
+              />
+
+              <Input
                 label="New Password"
                 type="password"
                 placeholder="Enter new password"
@@ -193,6 +229,55 @@ export default function ProfilePage() {
                 loading={isChangingPassword}
               >
                 Change Password
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+
+        {/* Change Email */}
+        <Card>
+          <CardHeader>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              Change Email
+            </h2>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleChangeEmail} className="space-y-4">
+              {error && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                </div>
+              )}
+
+              {success && (
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                  <p className="text-sm text-green-600 dark:text-green-400">{success}</p>
+                </div>
+              )}
+
+              <Input
+                label="Current Password"
+                type="password"
+                placeholder="Enter current password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+
+              <Input
+                label="New Email"
+                type="email"
+                placeholder="Enter new email"
+                value={newEmailValue}
+                onChange={(e) => setNewEmailValue(e.target.value)}
+                required
+              />
+
+              <Button
+                type="submit"
+                loading={isChangingEmail}
+              >
+                Change Email
               </Button>
             </form>
           </CardBody>

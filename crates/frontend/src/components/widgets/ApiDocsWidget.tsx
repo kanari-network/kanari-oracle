@@ -70,6 +70,14 @@ const endpoints: ApiEndpoint[] = [
   },
   {
     method: 'POST',
+    endpoint: '/users/change-email',
+    description: 'Change account email (requires current password)',
+    auth: true,
+    body: '{"current_password":"","new_email":""}',
+    example: 'curl -X POST http://localhost:3000/users/change-email -H "Content-Type: application/json" -H "Authorization: Bearer YOUR_TOKEN_HERE" -d \'{"current_password":"old","new_email":"new@example.com"}\'',
+  },
+  {
+    method: 'POST',
     endpoint: '/users/delete',
     description: 'Delete user account permanently',
     auth: true,

@@ -369,6 +369,58 @@ Invoke-RestMethod -Uri "http://localhost:3000/users/change-password" -Method Pos
 - All existing tokens remain valid after password change
 - Use strong passwords for better security
 
+### Change Email
+
+**POST** `/users/change-email`
+
+Change the current user's email address. Requires current password confirmation.
+
+**Authentication:**
+
+- Send your API token in the Authorization header: `Authorization: Bearer <YOUR_TOKEN_HERE>`
+
+**Request Body:**
+
+```json
+{
+  "current_password": "current_password",
+  "new_email": "new_email@example.com"
+}
+```
+
+**Example (curl):**
+
+```bash
+curl -X POST "http://localhost:3000/users/change-email" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{"current_password":"old_password","new_email":"new@example.com"}'
+```
+
+**PowerShell Example:**
+
+```powershell
+$headers = @{ Authorization = "Bearer YOUR_TOKEN_HERE" }
+$body = @{ current_password = "old_password"; new_email = "new@example.com" } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://localhost:3000/users/change-email" -Method Post -Body $body -Headers $headers -ContentType "application/json"
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "data": "Email updated successfully",
+  "error": null
+}
+```
+
+**Security Notes:**
+
+- Requires current password verification
+- Changing email does not revoke existing tokens
+- New email is stored as provided (no format validation performed by server)
+
 ### Delete User Account
 
 **POST** `/users/delete`

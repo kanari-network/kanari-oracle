@@ -12,9 +12,9 @@ use kanari_oracle::oracle::Oracle;
 
 use crate::database::{DbPool, create_db_pool, initialize_database};
 use crate::handlers::{
-    change_user_password, create_user_token, delete_user_account, delete_user_token,
-    get_all_prices, get_price, get_stats, get_user_profile, health_check, list_symbols,
-    list_user_tokens, list_users, login_user, register_user, update_prices,
+    change_user_email, change_user_password, create_user_token, delete_user_account,
+    delete_user_token, get_all_prices, get_price, get_stats, get_user_profile, health_check,
+    list_symbols, list_user_tokens, list_users, login_user, register_user, update_prices,
 };
 
 pub type SharedOracle = Arc<RwLock<Oracle>>;
@@ -51,6 +51,7 @@ pub fn create_router(oracle: SharedOracle, db: DbPool) -> Router {
         .route("/users/tokens/revoke", post(delete_user_token))
         .route("/users/profile", get(get_user_profile))
         .route("/users/change-password", post(change_user_password))
+        .route("/users/change-email", post(change_user_email))
         .route("/users/delete", post(delete_user_account))
         // Add state
         .with_state(state)
@@ -95,6 +96,9 @@ pub async fn start_api_server_with_shared_oracle(
     );
     log::info!(
         "  POST /users/change-password      - Change password (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
+    );
+    log::info!(
+        "  POST /users/change-email         - Change account email (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"
     );
     log::info!(
         "  POST /users/delete               - Delete user account (requires Authorization: Bearer <YOUR_TOKEN_HERE>)"

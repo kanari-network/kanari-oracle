@@ -1,8 +1,8 @@
 use anyhow::anyhow;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::Row;
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 use crate::database::DbPool;
 

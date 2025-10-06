@@ -129,3 +129,9 @@ pub struct ChangePasswordRequest {
     // If true, revoke other tokens for this user (keeps the current token)
     pub revoke_others: Option<bool>,
 }
+
+#[derive(Deserialize)]
+pub struct ChangeEmailRequest {
+    pub current_password: String,
+    pub new_email: Option<String>,
+}

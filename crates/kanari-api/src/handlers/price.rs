@@ -6,7 +6,7 @@ use axum::{
 use std::collections::HashMap;
 
 use crate::api::AppState;
-use crate::auth::{validate_token, extract_token_from_request};
+use crate::auth::{extract_token_from_request, validate_token};
 use crate::models::{ApiResponse, ListQuery, PriceResponse, StatsResponse, SymbolsResponse};
 
 // Get price for a specific symbol
@@ -18,7 +18,7 @@ pub async fn get_price(
 ) -> Result<Json<ApiResponse<PriceResponse>>, StatusCode> {
     // Validate token from header or query parameter
     let token = extract_token_from_request(&headers, &query);
-    
+
     if let Some(token) = token {
         if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
@@ -65,7 +65,7 @@ pub async fn get_all_prices(
 ) -> Result<Json<ApiResponse<Vec<PriceResponse>>>, StatusCode> {
     // Validate token from header or query parameter
     let token = extract_token_from_request(&headers, &query);
-    
+
     if let Some(token) = token {
         if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
@@ -113,7 +113,7 @@ pub async fn list_symbols(
 ) -> Json<ApiResponse<SymbolsResponse>> {
     // Validate token from header or query parameter
     let token = extract_token_from_request(&headers, &query);
-    
+
     if let Some(token) = token {
         if !validate_token(&state.db, &token).await {
             return Json(ApiResponse::error("Invalid or expired token".to_string()));
@@ -154,7 +154,7 @@ pub async fn get_stats(
 ) -> Json<ApiResponse<StatsResponse>> {
     // Validate token from header or query parameter
     let token = extract_token_from_request(&headers, &query);
-    
+
     if let Some(token) = token {
         if !validate_token(&state.db, &token).await {
             return Json(ApiResponse::error("Invalid or expired token".to_string()));
@@ -200,7 +200,7 @@ pub async fn update_prices(
 ) -> Result<Json<ApiResponse<String>>, StatusCode> {
     // Validate token from header or query parameter
     let token = extract_token_from_request(&headers, &query);
-    
+
     if let Some(token) = token {
         if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
