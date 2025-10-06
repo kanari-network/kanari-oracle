@@ -45,7 +45,7 @@ impl CryptoFetcher {
         // Enable multiple free public sources by default (CoinGecko, Binance, Coinbase).
         // API keys are optional for Binance/Coinbase public endpoints, so prefer using them when available.
         let use_binance = true;
-        let use_coinbase = self.fetcher.config().crypto.coinbase_api_key.is_some();
+        let use_coinbase = true;
 
         let futures: Vec<_> = symbols
             .iter()

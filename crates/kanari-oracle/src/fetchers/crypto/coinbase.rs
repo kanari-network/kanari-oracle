@@ -54,7 +54,7 @@ impl CoinbaseFetcher {
             match result {
                 Ok(price_data) => {
                     info!(
-                        "Successfully fetched {} from Coinbase: ${:.2}",
+                        "Successfully fetched {} from Coinbase Pro: ${:.2}",
                         price_data.symbol, price_data.price
                     );
                     prices.push(price_data);
@@ -71,7 +71,7 @@ impl CoinbaseFetcher {
             ));
         }
 
-        info!("Successfully fetched {} prices from Coinbase", prices.len());
+        info!("Successfully fetched {} prices from Coinbase Pro", prices.len());
         Ok(prices)
     }
 
@@ -88,8 +88,8 @@ impl CoinbaseFetcher {
             format!("{}-USD", original_symbol.to_uppercase())
         };
 
-        let ticker_url = format!("https://api.coinbase.com/v2/products/{}/ticker", pair);
-        let stats_url = format!("https://api.coinbase.com/v2/products/{}/stats", pair);
+        let ticker_url = format!("https://api.pro.coinbase.com/products/{}/ticker", pair);
+        let stats_url = format!("https://api.pro.coinbase.com/products/{}/stats", pair);
         let symbol = original_symbol.to_string();
         let client = self.fetcher.client().clone();
 
@@ -129,7 +129,7 @@ impl CoinbaseFetcher {
                 let resp_stats = client.get(&stats_url).send().await?;
                 if !resp_stats.status().is_success() {
                     // If stats fails, still return price-only data
-                    let pd = PriceData::new(symbol.to_lowercase(), price, "coinbase".to_string());
+                    let pd = PriceData::new(symbol.to_lowercase(), price, "coinbase-pro".to_string());
                     return Ok(pd);
                 }
                 #[derive(Deserialize)]
@@ -148,7 +148,7 @@ impl CoinbaseFetcher {
                 let volume: Option<f64> = stats.volume.as_deref().and_then(|s| s.parse().ok());
 
                 let mut price_data =
-                    PriceData::new(symbol.to_lowercase(), price, "coinbase".to_string());
+                    PriceData::new(symbol.to_lowercase(), price, "coinbase-pro".to_string());
 
                 if let Some(open_val) = open {
                     let change = price - open_val;

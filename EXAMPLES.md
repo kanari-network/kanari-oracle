@@ -103,6 +103,7 @@ The system works without API keys using free endpoints:
     "coingecko_api_key": null,
     "binance_api_key": null,
     "binance_secret_key": null,
+    "coingecko_api_key": null,
     "default_vs_currency": "usd",
     "symbols": ["bitcoin", "ethereum", "cardano"]
   },
