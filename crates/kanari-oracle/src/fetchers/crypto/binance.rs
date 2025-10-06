@@ -163,26 +163,24 @@ impl BinanceFetcher {
                         ))
                     })?;
 
-                let price_change: f64 = ticker
+                // Parse optional fields to Option<f64> so we don't mask missing/invalid values as 0.0.
+                let price_change: Option<f64> = ticker
                     .price_change
                     .as_deref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
+                    .and_then(|s| s.parse().ok());
 
-                let price_change_percent: f64 = ticker
+                let price_change_percent: Option<f64> = ticker
                     .price_change_percent
                     .as_deref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
+                    .and_then(|s| s.parse().ok());
 
-                let volume: f64 = ticker
+                let volume: Option<f64> = ticker
                     .volume
                     .as_deref()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0.0);
+                    .and_then(|s| s.parse().ok());
 
                 info!(
-                    "Parsed Binance 24hr data for {}: price={}, change={}, change%={}",
+                    "Parsed Binance 24hr data for {}: price={} change={:?} change%={:?}",
                     binance_symbol, price, price_change, price_change_percent
                 );
 
@@ -192,9 +190,9 @@ impl BinanceFetcher {
                     "binance".to_string(),
                 );
 
-                price_data.change_24h = Some(price_change);
-                price_data.change_24h_percent = Some(price_change_percent);
-                price_data.volume_24h = Some(volume);
+                price_data.change_24h = price_change;
+                price_data.change_24h_percent = price_change_percent;
+                price_data.volume_24h = volume;
 
                 Ok(price_data)
             })
