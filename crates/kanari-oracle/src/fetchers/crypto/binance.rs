@@ -3,6 +3,7 @@ use crate::errors::{OracleError, Result};
 use crate::models::PriceData;
 use futures::future::join_all;
 use log::{debug, error, info, warn};
+use serde::Deserialize;
 
 #[derive(Clone)]
 pub struct BinanceFetcher {
@@ -12,6 +13,26 @@ pub struct BinanceFetcher {
 impl BinanceFetcher {
     pub fn new(fetcher: PriceFetcher) -> Self {
         Self { fetcher }
+    }
+
+    /// Normalize a user-provided symbol into a Binance ticker symbol.
+    /// E.g. "btc", "BTC/USD", "btc-usd" => "BTCUSDT"
+    fn normalize_symbol_for_binance(original: &str) -> String {
+        let mut s = original.to_uppercase();
+        // remove common separators
+        s = s.replace('-', "").replace('/', "");
+
+        // If it's already a futures/USDT/USDC/USD pair, return as-is (prefer USDT)
+        if s.ends_with("USDT") || s.ends_with("USDC") {
+            return s;
+        }
+
+        // If it ends with USD (e.g. BTCUSD) treat as base and prefer USDT
+        if s.ends_with("USD") {
+            s = s.trim_end_matches("USD").to_string();
+        }
+
+        format!("{}USDT", s)
     }
 
     /// Fetch prices from Binance API with enhanced error handling
@@ -34,16 +55,25 @@ impl BinanceFetcher {
         info!("Fetching Binance prices for symbols: {:?}", symbols);
 
         // Parallelize Binance calls for better performance
+        // Clone only the inner PriceFetcher (cheap) for each task to avoid cloning the whole
+        // BinanceFetcher (which may capture more state). This mirrors the pattern used
+        // in the Coinbase fetcher and is slightly more efficient.
         let binance_futures: Vec<_> = symbols
             .iter()
             .filter(|s| !s.is_empty())
-            .map(|symbol| async move {
-                // Try different APIs in order of preference with proper error handling
-                match self.fetch_binance_24hr_ticker(symbol).await {
-                    Ok(price_data) => Ok(price_data),
-                    Err(e) => {
-                        warn!("Binance 24hr ticker failed for {}: {}", symbol, e);
-                        self.fetch_binance_price_only(symbol).await
+            .map(|symbol| {
+                let fetcher = self.fetcher.clone();
+                let symbol = symbol.clone();
+                async move {
+                    // Recreate a lightweight BinanceFetcher for the async task.
+                    let this = BinanceFetcher::new(fetcher);
+
+                    match this.fetch_binance_24hr_ticker(&symbol).await {
+                        Ok(price_data) => Ok(price_data),
+                        Err(e) => {
+                            warn!("Binance 24hr ticker failed for {}: {}", symbol, e);
+                            this.fetch_binance_price_only(&symbol).await
+                        }
                     }
                 }
             })
@@ -80,7 +110,7 @@ impl BinanceFetcher {
             return Err(OracleError::ApiError("Empty symbol provided".to_string()));
         }
 
-        let binance_symbol = format!("{}USDT", original_symbol.to_uppercase());
+        let binance_symbol = Self::normalize_symbol_for_binance(original_symbol);
         let url = format!(
             "https://api.binance.com/api/v3/ticker/24hr?symbol={}",
             binance_symbol
@@ -105,39 +135,49 @@ impl BinanceFetcher {
                     )));
                 }
 
-                let ticker_data: serde_json::Value = response.json().await?;
+                #[derive(Deserialize)]
+                struct Binance24hrTicker {
+                    #[serde(rename = "lastPrice")]
+                    last_price: String,
+                    #[serde(rename = "priceChange")]
+                    price_change: Option<String>,
+                    #[serde(rename = "priceChangePercent")]
+                    price_change_percent: Option<String>,
+                    volume: Option<String>,
+                }
+
+                let ticker: Binance24hrTicker = response.json().await?;
 
                 debug!(
-                    "Binance 24hr ticker response: {}",
-                    serde_json::to_string_pretty(&ticker_data).unwrap_or_default()
+                    "Binance 24hr ticker parsed: price={} change={:?} change%={:?} volume={:?}",
+                    ticker.last_price, ticker.price_change, ticker.price_change_percent, ticker.volume
                 );
 
-                let price: f64 = ticker_data["lastPrice"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or_else(|| {
+                let price: f64 = ticker
+                    .last_price
+                    .parse()
+                    .map_err(|_| {
                         OracleError::ApiError(format!(
-                            "Invalid price format from Binance 24hr for {}. Response: {}",
-                            binance_symbol,
-                            ticker_data
-                                .get("lastPrice")
-                                .map(|v| v.to_string())
-                                .unwrap_or_default()
+                            "Invalid price format from Binance 24hr for {}: {}",
+                            binance_symbol, ticker.last_price
                         ))
                     })?;
 
-                let price_change: f64 = ticker_data["priceChange"]
-                    .as_str()
+                let price_change: f64 = ticker
+                    .price_change
+                    .as_deref()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.0);
 
-                let price_change_percent: f64 = ticker_data["priceChangePercent"]
-                    .as_str()
+                let price_change_percent: f64 = ticker
+                    .price_change_percent
+                    .as_deref()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.0);
 
-                let volume: f64 = ticker_data["volume"]
-                    .as_str()
+                let volume: f64 = ticker
+                    .volume
+                    .as_deref()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0.0);
 
@@ -166,7 +206,7 @@ impl BinanceFetcher {
             return Err(OracleError::ApiError("Empty symbol provided".to_string()));
         }
 
-        let binance_symbol = format!("{}USDT", symbol.to_uppercase());
+        let binance_symbol = Self::normalize_symbol_for_binance(symbol);
 
         let url = format!(
             "https://api.binance.com/api/v3/ticker/price?symbol={}",
@@ -192,17 +232,19 @@ impl BinanceFetcher {
                     )));
                 }
 
-                let price_data: serde_json::Value = response.json().await?;
+                #[derive(Deserialize)]
+                struct BinancePriceTicker {
+                    price: String,
+                }
 
-                let price: f64 = price_data["price"]
-                    .as_str()
-                    .and_then(|s| s.parse().ok())
-                    .ok_or_else(|| {
-                        OracleError::ApiError(format!(
-                            "Invalid price from Binance for {}: {}",
-                            binance_symbol, price_data
-                        ))
-                    })?;
+                let pt: BinancePriceTicker = response.json().await?;
+
+                let price: f64 = pt.price.parse().map_err(|_| {
+                    OracleError::ApiError(format!(
+                        "Invalid price from Binance for {}: {}",
+                        binance_symbol, pt.price
+                    ))
+                })?;
 
                 Ok(PriceData::new(
                     symbol.to_lowercase(), // Use lowercase for consistency

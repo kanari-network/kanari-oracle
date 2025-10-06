@@ -205,6 +205,9 @@ impl StockFetcher {
             return Ok(Vec::new());
         }
 
+        // Yahoo Finance's simple price API works without an API key, so enable it by default
+        // Enable multiple free public sources by default (Yahoo Finance, Alpha Vantage, Finnhub).
+        // API keys are optional for (Yahoo Finance, Alpha Vantage, Finnhub) public endpoints, so prefer using them when available.
         let use_alpha = self.fetcher.config().stocks.alpha_vantage_api_key.is_some();
         let use_finnhub = self.fetcher.config().stocks.finnhub_api_key.is_some();
 
@@ -216,37 +219,75 @@ impl StockFetcher {
                 let use_alpha = use_alpha;
                 let use_finnhub = use_finnhub;
                 async move {
-                    let primary = if use_alpha {
-                        self.fetch_alpha_vantage_price(&s).await
-                    } else if use_finnhub {
-                        self.fetch_finnhub_price(&s).await
+                    // Prefer Finnhub as the primary source, then Alpha Vantage, then the free Yahoo endpoint
+                    enum Source {
+                        Finnhub,
+                        Alpha,
+                        Free,
+                    }
+
+                    let primary_source = if use_finnhub {
+                        Source::Finnhub
+                    } else if use_alpha {
+                        Source::Alpha
                     } else {
-                        self.fetch_free_stock_price(&s).await
+                        Source::Free
                     };
+
+                    let primary = match primary_source {
+                        Source::Finnhub => self.fetch_finnhub_price(&s).await,
+                        Source::Alpha => self.fetch_alpha_vantage_price(&s).await,
+                        Source::Free => self.fetch_free_stock_price(&s).await,
+                    };
+
                     match primary {
                         Ok(price_data) => Ok(price_data),
-                        Err(e) => {
+                        Err(mut e) => {
                             warn!("Failed to fetch price for {}: {}", s, e);
-                            if use_alpha || use_finnhub {
+
+                            // Try ordered fallbacks: Finnhub -> Alpha -> Free, skipping the primary we already tried.
+                            if !matches!(primary_source, Source::Finnhub) && use_finnhub {
+                                match self.fetch_finnhub_price(&s).await {
+                                    Ok(price_data) => {
+                                        info!(
+                                            "Successfully fetched {} price using Finnhub fallback",
+                                            s
+                                        );
+                                        return Ok(price_data);
+                                    }
+                                    Err(err) => e = err,
+                                }
+                            }
+
+                            if !matches!(primary_source, Source::Alpha) && use_alpha {
+                                match self.fetch_alpha_vantage_price(&s).await {
+                                    Ok(price_data) => {
+                                        info!(
+                                            "Successfully fetched {} price using Alpha Vantage fallback",
+                                            s
+                                        );
+                                        return Ok(price_data);
+                                    }
+                                    Err(err) => e = err,
+                                }
+                            }
+
+                            // Always try the free Yahoo endpoint last
+                            if !matches!(primary_source, Source::Free) {
                                 match self.fetch_free_stock_price(&s).await {
                                     Ok(price_data) => {
                                         info!(
-                                            "Successfully fetched {} price using fallback API",
+                                            "Successfully fetched {} price using free Yahoo fallback",
                                             s
                                         );
-                                        Ok(price_data)
+                                        return Ok(price_data);
                                     }
-                                    Err(fallback_error) => {
-                                        error!(
-                                            "All APIs failed for {}: {} (fallback: {})",
-                                            s, e, fallback_error
-                                        );
-                                        Err(fallback_error)
-                                    }
+                                    Err(err) => e = err,
                                 }
-                            } else {
-                                Err(e)
                             }
+
+                            error!("All APIs failed for {}: {}", s, e);
+                            Err(e)
                         }
                     }
                 }
@@ -257,6 +298,7 @@ impl StockFetcher {
         let mut prices = Vec::new();
         for result in results {
             if let Ok(price_data) = result {
+                // price_data is Vec<PriceData> (for the single symbol), so extend the final list
                 prices.push(price_data);
             }
         }

@@ -1,12 +1,11 @@
+use crate::errors::Result;
 use crate::fetchers::PriceFetcher;
-use crate::errors::{OracleError, Result};
 use crate::models::*;
 use futures::future::join_all;
 use log::{error, info, warn};
-use std::collections::HashSet;
-
-pub mod coingecko;
 pub mod binance;
+pub mod coinbase;
+pub mod coingecko;
 
 #[derive(Clone)]
 pub struct CryptoFetcher {
@@ -29,14 +28,9 @@ impl CryptoFetcher {
         b.fetch_binance_prices(symbols).await
     }
 
-    pub async fn fetch_binance_24hr_ticker(&self, symbol: &str) -> Result<PriceData> {
-        let b = binance::BinanceFetcher::new(self.fetcher.clone());
-        b.fetch_binance_24hr_ticker(symbol).await
-    }
-
-    pub async fn fetch_binance_price_only(&self, symbol: &str) -> Result<PriceData> {
-        let b = binance::BinanceFetcher::new(self.fetcher.clone());
-        b.fetch_binance_price_only(symbol).await
+    pub async fn fetch_coinbase_prices(&self, symbols: &[String]) -> Result<Vec<PriceData>> {
+        let c = coinbase::CoinbaseFetcher::new(self.fetcher.clone());
+        c.fetch_coinbase_prices(symbols).await
     }
 
     /// Fetch comprehensive crypto data using multiple sources
@@ -47,80 +41,110 @@ impl CryptoFetcher {
             return Ok(Vec::new());
         }
 
-        let mut all_prices = Vec::new();
+        // CoinGecko's simple price API works without an API key, so enable it by default
+        // Enable multiple free public sources by default (CoinGecko, Binance, Coinbase).
+        // API keys are optional for Binance/Coinbase public endpoints, so prefer using them when available.
+        let use_binance = true;
+        let use_coinbase = self.fetcher.config().crypto.coinbase_api_key.is_some();
 
-        // Try CoinGecko first for all symbols
-        match self.fetch_coingecko_prices(symbols).await {
-            Ok(prices) => {
-                info!("Fetched {} prices from CoinGecko", prices.len());
-                all_prices.extend(prices);
-            }
-            Err(e) => {
-                warn!("CoinGecko failed: {}", e);
-            }
-        }
-
-        // Try Binance for missing symbols individually with parallel execution
-        let existing_symbols: HashSet<String> =
-            all_prices.iter().map(|p| p.symbol.clone()).collect();
-
-        let missing_symbols: Vec<String> = symbols
+        let futures: Vec<_> = symbols
             .iter()
-            .filter(|s| !s.is_empty() && !existing_symbols.contains(&s.to_lowercase()))
-            .cloned()
-            .collect();
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                let s = s.to_string();
+                let use_coinbase = use_coinbase;
+                let use_binance = use_binance;
+                async move {
+                    // Build a single-symbol slice for the delegated fetchers
+                    let single = vec![s.clone()];
 
-        // Warn if symbols contain hyphens (likely invalid for Binance tickers)
-        for symbol in &missing_symbols {
-            if symbol.contains('-') {
-                warn!(
-                    "Symbol '{}' contains hyphens and may not work with Binance (expects ticker format like 'BTC')",
-                    symbol
-                );
-            }
-        }
+                    // Prefer Binance as the primary source, then Coinbase, then CoinGecko
+                    enum Source {
+                        Binance,
+                        Coinbase,
+                        CoinGecko,
+                    }
 
-        if !missing_symbols.is_empty() {
-            let binance_futures: Vec<_> = missing_symbols
-                .iter()
-                .map(|symbol| async move {
-                    match self.fetch_binance_24hr_ticker(symbol).await {
+                    let primary_source = if use_binance {
+                        Source::Binance
+                    } else if use_coinbase {
+                        Source::Coinbase
+                    } else {
+                        Source::CoinGecko
+                    };
+
+                    let primary = match primary_source {
+                        Source::Binance => self.fetch_binance_prices(&single).await,
+                        Source::Coinbase => self.fetch_coinbase_prices(&single).await,
+                        Source::CoinGecko => self.fetch_coingecko_prices(&single).await,
+                    };
+
+                    match primary {
                         Ok(price_data) => Ok(price_data),
-                        Err(e) => {
-                            warn!("Binance 24hr ticker failed for {}: {}", symbol, e);
-                            self.fetch_binance_price_only(symbol).await
+                        Err(mut e) => {
+                            warn!("Failed to fetch price for {}: {}", s, e);
+
+                            // Try ordered fallbacks: Binance -> Coinbase -> CoinGecko,
+                            // skipping the primary we already attempted.
+                            // Keep the last error to return if all fail.
+                            if !matches!(primary_source, Source::Binance) && use_binance {
+                                match self.fetch_binance_prices(&single).await {
+                                    Ok(price_data) => {
+                                        info!(
+                                            "Successfully fetched {} price using Binance fallback",
+                                            s
+                                        );
+                                        return Ok(price_data);
+                                    }
+                                    Err(err) => e = err,
+                                }
+                            }
+
+                            if !matches!(primary_source, Source::Coinbase) && use_coinbase {
+                                match self.fetch_coinbase_prices(&single).await {
+                                    Ok(price_data) => {
+                                        info!(
+                                            "Successfully fetched {} price using Coinbase fallback",
+                                            s
+                                        );
+                                        return Ok(price_data);
+                                    }
+                                    Err(err) => e = err,
+                                }
+                            }
+
+                            // Always try CoinGecko last (it usually doesn't require API keys)
+                            if !matches!(primary_source, Source::CoinGecko) {
+                                match self.fetch_coingecko_prices(&single).await {
+                                    Ok(price_data) => {
+                                        info!(
+                                            "Successfully fetched {} price using CoinGecko fallback",
+                                            s
+                                        );
+                                        return Ok(price_data);
+                                    }
+                                    Err(err) => e = err,
+                                }
+                            }
+
+                            error!("All APIs failed for {}: {}", s, e);
+                            Err(e)
                         }
                     }
-                })
-                .collect();
-
-            let binance_results = join_all(binance_futures).await;
-            for result in binance_results {
-                match result {
-                    Ok(price_data) => {
-                        info!(
-                            "Successfully fetched {} price from Binance: ${:.2}",
-                            price_data.symbol, price_data.price
-                        );
-                        all_prices.push(price_data);
-                    }
-                    Err(e) => {
-                        error!("All Binance APIs failed: {}", e);
-                    }
                 }
+            })
+            .collect();
+
+        let results = join_all(futures).await;
+        let mut prices = Vec::new();
+        for result in results {
+            if let Ok(price_data) = result {
+                // price_data is Vec<PriceData> (for the single symbol), so extend the final list
+                prices.extend(price_data);
             }
         }
 
-        if all_prices.is_empty() {
-            return Err(OracleError::ApiError(
-                "All crypto price sources failed".to_string(),
-            ));
-        }
-
-        info!(
-            "Successfully fetched {} total crypto prices",
-            all_prices.len()
-        );
-        Ok(all_prices)
+        info!("Successfully fetched {} crypto prices", prices.len());
+        Ok(prices)
     }
 }
