@@ -28,7 +28,7 @@ pub async fn initialize_database(pool: &DbPool) -> anyhow::Result<()> {
             id SERIAL PRIMARY KEY,
             token VARCHAR(255) UNIQUE NOT NULL,
             owner VARCHAR(255) NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
+            expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
             FOREIGN KEY (owner) REFERENCES users(username) ON DELETE CASCADE
         )

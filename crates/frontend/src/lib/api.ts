@@ -15,7 +15,7 @@ export interface TokenResponse {
 export interface UserProfile {
   id: number;
   username: string;
-  owner_email: string | null;
+  email: string | null;
   created_at: string;
 }
 
@@ -141,6 +141,16 @@ class KanariAPI {
       body: JSON.stringify({
         current_password: currentPassword,
         new_password: newPassword,
+      }),
+    });
+  }
+
+  async changeEmail(currentPassword: string, newEmail: string | null) {
+    return this.request<string>('/users/change-email', {
+      method: 'POST',
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_email: newEmail,
       }),
     });
   }

@@ -1,30 +1,33 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::Json,
 };
 use std::collections::HashMap;
 
 use crate::api::AppState;
-use crate::auth::validate_token;
+use crate::auth::{extract_token_from_request, validate_token};
 use crate::models::{ApiResponse, ListQuery, PriceResponse, StatsResponse, SymbolsResponse};
 
 // Get price for a specific symbol
 pub async fn get_price(
     Path((asset_type, symbol)): Path<(String, String)>,
     Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<PriceResponse>>, StatusCode> {
-    // Validate token
-    if let Some(token) = query.get("token") {
-        if !validate_token(&state.db, token).await {
+    // Validate token from header or query parameter
+    let token = extract_token_from_request(&headers, &query);
+
+    if let Some(token) = token {
+        if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
                 "Invalid or expired token".to_string(),
             )));
         }
     } else {
         return Ok(Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Missing authentication token".to_string(),
         )));
     }
     let oracle_lock = state.oracle.read().await;
@@ -57,17 +60,21 @@ pub async fn get_price(
 pub async fn get_all_prices(
     Path(asset_type): Path<String>,
     Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<Vec<PriceResponse>>>, StatusCode> {
-    if let Some(token) = query.get("token") {
-        if !validate_token(&state.db, token).await {
+    // Validate token from header or query parameter
+    let token = extract_token_from_request(&headers, &query);
+
+    if let Some(token) = token {
+        if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
                 "Invalid or expired token".to_string(),
             )));
         }
     } else {
         return Ok(Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Missing authentication token".to_string(),
         )));
     }
     let oracle_lock = state.oracle.read().await;
@@ -101,16 +108,19 @@ pub async fn get_all_prices(
 pub async fn list_symbols(
     Query(params): Query<ListQuery>,
     Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Json<ApiResponse<SymbolsResponse>> {
-    if let Some(token) = query.get("token") {
-        // Allow list without token? enforce token
-        if !validate_token(&state.db, token).await {
+    // Validate token from header or query parameter
+    let token = extract_token_from_request(&headers, &query);
+
+    if let Some(token) = token {
+        if !validate_token(&state.db, &token).await {
             return Json(ApiResponse::error("Invalid or expired token".to_string()));
         }
     } else {
         return Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Missing authentication token".to_string(),
         ));
     }
     let oracle_lock = state.oracle.read().await;
@@ -139,15 +149,19 @@ pub async fn list_symbols(
 // Get oracle statistics
 pub async fn get_stats(
     Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Json<ApiResponse<StatsResponse>> {
-    if let Some(token) = query.get("token") {
-        if !validate_token(&state.db, token).await {
+    // Validate token from header or query parameter
+    let token = extract_token_from_request(&headers, &query);
+
+    if let Some(token) = token {
+        if !validate_token(&state.db, &token).await {
             return Json(ApiResponse::error("Invalid or expired token".to_string()));
         }
     } else {
         return Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Missing authentication token".to_string(),
         ));
     }
     let oracle_lock = state.oracle.read().await;
@@ -181,17 +195,21 @@ pub async fn get_stats(
 pub async fn update_prices(
     Path(asset_type): Path<String>,
     Query(query): Query<HashMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<ApiResponse<String>>, StatusCode> {
-    if let Some(token) = query.get("token") {
-        if !validate_token(&state.db, token).await {
+    // Validate token from header or query parameter
+    let token = extract_token_from_request(&headers, &query);
+
+    if let Some(token) = token {
+        if !validate_token(&state.db, &token).await {
             return Ok(Json(ApiResponse::error(
                 "Invalid or expired token".to_string(),
             )));
         }
     } else {
         return Ok(Json(ApiResponse::error(
-            "Missing token query parameter".to_string(),
+            "Missing authentication token".to_string(),
         )));
     }
     let mut oracle_lock = state.oracle.write().await;
